@@ -1,0 +1,29 @@
+header {
+  background: #ffffff;
+  color: #A5A5A5;
+  height: 90px;
+  width: 100%;
+  position: fixed;
+  z-index: 4;
+  box-shadow: 2px 2px 2px 1px rgba(0, 0, 0, 0.15);
+}
+
+.header-text {
+  margin: 0 30px;
+  height: 100%;
+  display: table;
+}
+
+.brand {
+  height: 18px;
+  width: 200px;
+  padding: 10px;
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  top: 24px;
+}
+
+.brand img {
+  width: 200px;
+}

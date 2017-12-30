@@ -1,0 +1,128 @@
+.typeahead {
+  width: 350px;
+  position: absolute;
+  padding: 0 10px;
+  left: 50%;
+  margin-left: -175px;
+  top: 26px;
+}
+
+.typeahead input {
+  width: 260px;
+  float: right;
+  box-sizing: border-box;
+  height: 36px;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  border-left: none;
+  background: #f8f8f8;
+  padding-right: 41px;
+  border: 1px solid #f8f8f8;
+  color: #333333;
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
+
+.typeahead input:focus {
+  outline: 2px solid #6DD1D1;
+  -webkit-box-shadow: 0px 0px 5px  #6DD1D1;
+  box-shadow: 0px 0px 5px  #6DD1D1;
+}
+
+.typeahead-results {
+  position: absolute;
+  padding: 10px 20px;
+  background: #fff;
+  margin: 35px 0 0 90px;
+  border-radius: 3px;
+  border: 1px solid #95989A;
+  z-index: 1;
+  display: none;
+  text-align: left;
+  font-size: .8em;
+}
+
+input:focus + .typeahead-results {
+  display: block;
+}
+
+.typeahead .typeahead-results.hidden {
+  display: none;
+}
+
+.typeahead-result {
+  display: block;
+  padding: 3px 6px;
+  color: #000;
+  cursor: pointer;
+}
+
+.typeahead-result.active {
+  background: #f1f1f1;
+}
+
+.typeahead-result.search-icon {
+  padding-left: 20px;
+  background-image: url(../images/icons/search-icon.png);
+  background-repeat: no-repeat;
+  background-position: 3px 4px;
+  background-size: 15px;
+}
+
+.search-button {
+  background-image: url(../images/icons/search-icon.png);
+  background-position: 90%;
+  background-size: 20px;
+  background-repeat: no-repeat;
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+/**
+* Typeahead select
+**/
+
+.typeahead .select-container {
+  position: absolute;
+  background-color: #e8e8e8;;
+  background-image: url(../images/icons/down-caret.png);
+  background-size: 12px;
+  background-repeat: no-repeat;
+  background-position: 83%;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+/* browser select reset */
+.custom-select {
+  padding: 6px;
+  border-radius: 0;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  background: transparent;
+  -webkit-user-select: none;
+  -moz-user-select: -moz-none;
+  -ms-user-select: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+.typeahead select {
+  width: 90px;
+  height: 36px;
+  font-size: .8em;
+  font-weight :600;
+  color: #666666;
+  padding-left: 13px;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  border: 1px solid #f8f8f8;
+}

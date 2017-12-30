@@ -1,0 +1,87 @@
+{
+  "name": "intertextualitet",
+  "version": "0.1.0",
+  "author": "",
+  "license": "ISC",
+  "description": "Visualizing text reuse",
+  "main": "server/server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/duhaime/intertextualitet.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "webpack-dev-server --port 7091",
+    "build": "./node_modules/webpack/bin/webpack.js",
+    "compress": "./node_modules/webpack/bin/webpack.js",
+    "production": "npm run build && node server/server.js",
+    "install-python-dependencies": "pip install -r utils/requirements.txt --user",
+    "detect-reuse": "python utils/detect_reuse.py",
+    "python-tests": "pytest utils/intertextualitet/tests/"
+  },
+  "dependencies": {
+    "babel-polyfill": "^6.26.0",
+    "bluebird": "^3.4.7",
+    "compression": "^1.6.2",
+    "connected-react-router": "^4.2.3",
+    "cookie-parser": "^1.4.3",
+    "d3": "^3.5.17",
+    "express": "^4.14.0",
+    "express-session": "^1.14.1",
+    "immutable": "^3.8.1",
+    "isomorphic-fetch": "^2.2.1",
+    "lodash": "^4.17.4",
+    "method-override": "^2.3.6",
+    "mongoose": "^4.6.3",
+    "mongoose-paginate": "^5.0.3",
+    "morgan": "^1.7.0",
+    "rc-slider": "^5.4.3",
+    "react": "^15.3.2",
+    "react-dom": "^15.3.2",
+    "react-redux": "^5.0.6",
+    "react-router": "^4.2.0",
+    "react-router-dom": "^4.2.2",
+    "redux": "^3.7.2",
+    "redux-freeze": "^0.1.5",
+    "redux-logger": "^3.0.6",
+    "redux-thunk": "^2.2.0",
+    "serve-favicon": "^2.4.0",
+    "superagent": "^3.3.1"
+  },
+  "devDependencies": {
+    "babel-core": "^6.17.0",
+    "babel-loader": "^6.2.5",
+    "babel-preset-env": "^1.6.1",
+    "babel-preset-react": "^6.16.0",
+    "babel-preset-react-hmre": "^1.1.1",
+    "body-parser": "^1.15.2",
+    "clean-webpack-plugin": "^0.1.17",
+    "compression-webpack-plugin": "^0.3.1",
+    "copy-webpack-plugin": "^4.3.0",
+    "css-loader": "^0.28.7",
+    "extract-text-webpack-plugin": "^3.0.2",
+    "file-loader": "^1.1.6",
+    "forever": "^0.15.3",
+    "html-webpack-plugin": "^2.30.1",
+    "json-loader": "^0.5.7",
+    "jsx-loader": "^0.13.2",
+    "optimize-css-assets-webpack-plugin": "^3.2.0",
+    "style-loader": "^0.19.1",
+    "webpack": "^3.5.6",
+    "webpack-dev-server": "^2.7.1",
+    "webpack-merge": "^4.1.0"
+  },
+  "babel": {
+    "presets": [
+      "env",
+      "react"
+    ],
+    "env": {
+      "start": {
+        "presets": [
+          "react-hmre"
+        ]
+      }
+    }
+  }
+}
