@@ -10,8 +10,8 @@ const history = createBrowserHistory();
 const loggerMiddleware = createLogger()
 
 let middlewares = [
+  thunkMiddleware,
   routerMiddleware(history),
-  thunkMiddleware
 ]
 
 // add the freeze dev middleware

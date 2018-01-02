@@ -36,7 +36,7 @@
     "mongoose": "^4.6.3",
     "mongoose-paginate": "^5.0.3",
     "morgan": "^1.7.0",
-    "rc-slider": "^5.4.3",
+    "rc-slider": "^8.5.0",
     "react": "^15.3.2",
     "react-dom": "^15.3.2",
     "react-redux": "^5.0.6",
@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "babel-loader": "^7.1.2",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
     "babel-preset-env": "^1.6.1",
     "babel-preset-react": "^6.16.0",
     "babel-preset-react-hmre": "^1.1.1",
@@ -75,6 +76,9 @@
     "presets": [
       "env",
       "react"
+    ],
+    "plugins": [
+      "transform-object-rest-spread"
     ],
     "env": {
       "start": {

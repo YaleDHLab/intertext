@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
+import Filters from '../filters/Filters';
 import Result from './Result';
 
 class Results extends React.Component {
@@ -8,13 +9,14 @@ class Results extends React.Component {
     const heights = getResultHeights(this.props.results)
     return (
       <div className='results'>
+        <Filters />
         <div className='result-pair-container'>
           {this.props.results.map((result, idx) => (
             <div className='result-pair' key={idx}>
               <Result result={result} type='source' height={heights[idx]} />
               <div className='similarity-circle'>
                 <div className='similarity'>
-                  {toInt(result.similarity) + '%'}
+                  {Math.round(result.similarity * 100) + '%'}
                 </div>
               </div>
               <Result result={result} type='target' height={heights[idx]} />
@@ -25,9 +27,6 @@ class Results extends React.Component {
     )
   }
 }
-
-// convert a percent to an integer
-const toInt = (float) => Math.round(float * 100)
 
 // compute the heights of each result pair
 const getResultHeights = (results) => {

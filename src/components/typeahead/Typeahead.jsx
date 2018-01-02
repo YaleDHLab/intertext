@@ -40,7 +40,7 @@ class Typeahead extends React.Component {
       if (index + 1 <= this.props.results.length) {
         this.props.setTypeaheadIndex(index + 1)
       }
-    // enter
+    // enter key
     } else if (e.keyCode === 13) {
       this.submitSearch()
     }
@@ -59,7 +59,7 @@ class Typeahead extends React.Component {
       : this.props.results[this.props.index - 1];
     this.props.setTypeaheadQuery(phrase)
     // submit the search and remove focus from the input
-    this.props.fetchSearchResults( buildSearchQuery(this.props, phrase) )
+    this.props.fetchSearchResults();
     this.props.history.push('/results')
     document.querySelector('.typeahead input').blur()
   }
@@ -87,19 +87,6 @@ const buildTypeaheadQuery = (props) => {
   return url;
 }
 
-const buildSearchQuery = (props, phrase) => {
-  // build the url to which the query will be sent
-  const query = encodeURIComponent(phrase);
-  let url = config.endpoint + 'clustered_matches?limit=1000';
-  if (props.type) {
-    url += '&' + props.type + '_' + props.field.toLowerCase() + '=' + query;
-  } else {
-    url += '&source_' + props.field.toLowerCase() + '=' + query;
-    url += '&target_' + props.field.toLowerCase() + '=' + query;
-  }
-  return url;
-}
-
 Typeahead.propTypes = {
   query: PropTypes.string.isRequired,
   field: PropTypes.string.isRequired,
@@ -107,6 +94,7 @@ Typeahead.propTypes = {
   results: PropTypes.array.isRequired,
   setTypeaheadQuery: PropTypes.func.isRequired,
   setTypeaheadIndex: PropTypes.func.isRequired,
+  fetchSearchResults: PropTypes.func.isRequired,
   history: PropTypes.shape({
     push: PropTypes.func.isRequired,
   }).isRequired,
@@ -124,7 +112,7 @@ const mapDispatchToProps = dispatch => ({
   setTypeaheadQuery: (val) => dispatch(setTypeaheadQuery(val)),
   setTypeaheadIndex: (val) => dispatch(setTypeaheadIndex(val)),
   fetchTypeaheadResults: (query) => dispatch(fetchTypeaheadResults(query)),
-  fetchSearchResults: (query) => dispatch(fetchSearchResults(query))
+  fetchSearchResults: () => dispatch(fetchSearchResults())
 })
 
 export default withRouter( connect(mapStateToProps, mapDispatchToProps)(Typeahead) )

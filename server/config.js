@@ -2,7 +2,7 @@ var config = {
   api: {
     protocol: 'http',
     host: 'localhost',
-    port: 8080,
+    port: 7092,
     prefix: 'api'
   },
   db: 'intertextualitet'
