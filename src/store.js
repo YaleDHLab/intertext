@@ -4,6 +4,7 @@ import { createBrowserHistory } from 'history';
 import { createLogger } from 'redux-logger';
 import thunkMiddleware from 'redux-thunk';
 import { rootReducer } from './reducers/index';
+import { loadSearchFromUrl } from './actions/search';
 import freeze from 'redux-freeze';
 
 const history = createBrowserHistory();
@@ -37,5 +38,7 @@ const store = createStore(
   connectRouter(history)(rootReducer),
   middleware
 );
+
+store.dispatch(loadSearchFromUrl(window.location.search));
 
 export { store, history };

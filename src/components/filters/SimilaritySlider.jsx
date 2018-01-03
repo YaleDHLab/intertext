@@ -3,7 +3,7 @@ import Tooltip from 'rc-tooltip';
 import Slider from 'rc-slider';
 import { connect } from 'react-redux';
 import {
-  setSimilarity,
+  setSimilarityAndSearch,
   setDisplayed
 } from '../../actions/similarity-slider';
 
@@ -17,7 +17,7 @@ class SimilaritySlider extends React.Component {
   }
 
   setSimilarity(val) {
-    this.props.setSimilarity(val)
+    this.props.setSimilarityAndSearch(val)
   }
 
   setDisplayed(val) {
@@ -48,7 +48,7 @@ const mapStateToProps = state => ({
 })
 
 const mapDispatchToProps = dispatch => ({
-  setSimilarity: (val) => dispatch(setSimilarity(val)),
+  setSimilarityAndSearch: (val) => dispatch(setSimilarityAndSearch(val)),
   setDisplayed: (val) => dispatch(setDisplayed(val)),
 })
 

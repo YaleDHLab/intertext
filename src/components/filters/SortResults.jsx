@@ -1,6 +1,6 @@
 import React from 'react';
 import { connect } from 'react-redux';
-import { setSortField } from '../../actions/sort-results';
+import { setSortAndSearch } from '../../actions/sort-results';
 
 class SortResults extends React.Component {
   constructor(props) {
@@ -9,8 +9,7 @@ class SortResults extends React.Component {
   }
 
   handleChange(e) {
-    console.log(e.target.value)
-    this.props.setSortField(e.target.value)
+    this.props.setSortAndSearch(e.target.value)
   }
 
   render() {
@@ -32,7 +31,7 @@ const mapStateToProps = state => ({
 })
 
 const mapDispatchToProps = dispatch => ({
-  setSortField: (field) => dispatch(setSortField(field))
+  setSortAndSearch: (field) => dispatch(setSortAndSearch(field)),
 })
 
 export default connect(mapStateToProps, mapDispatchToProps)(SortResults)

@@ -60,7 +60,6 @@ class Typeahead extends React.Component {
     this.props.setTypeaheadQuery(phrase)
     // submit the search and remove focus from the input
     this.props.fetchSearchResults();
-    this.props.history.push('/results')
     document.querySelector('.typeahead input').blur()
   }
 

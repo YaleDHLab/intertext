@@ -1,8 +1,12 @@
 import { fetchSearchResults } from './search';
 
-export const setSortField = (field) => {
+export const setSort = (field) => ({
+  type: 'SET_SORT', field: field
+})
+
+export const setSortAndSearch = (field) => {
   return (dispatch) => {
-    dispatch({type: 'SET_SORT_FIELD', field: field});
-    dispatch(fetchSearchResults())
+    dispatch(setSort(field));
+    dispatch(fetchSearchResults());
   }
 }

@@ -23,6 +23,9 @@ const searchReducer = (state = initialState, action) => {
         err: true
       })
 
+    case 'LOAD_SEARCH_FROM_OBJECT':
+      return Object.assign({}, state, action.obj)
+
     default:
       return state;
   }
