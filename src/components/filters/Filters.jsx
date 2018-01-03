@@ -1,5 +1,5 @@
 import React from 'react';
-import SortBy from './SortBy';
+import SortResults from './SortResults';
 import UseTypes from './UseTypes';
 import ResultCount from './ResultCount';
 import SimilaritySlider from './SimilaritySlider';
@@ -11,9 +11,9 @@ class Filters extends React.Component {
         <div className='filters'>
           <ResultCount />
           <div className='filter-fields'>
-            <SimilaritySlider />
             <UseTypes />
-            <SortBy />
+            <SimilaritySlider />
+            <SortResults />
           </div>
         </div>
       </div>

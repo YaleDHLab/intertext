@@ -110,6 +110,10 @@
   position: relative;
 }
 
+.result-pair:hover .result-wrapper {
+  outline: 3px solid #6DD1D1;
+}
+
 /**
 * Card animations
 **/

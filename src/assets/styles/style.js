@@ -6,7 +6,7 @@ import './home.css';
 import './nav.css';
 import './results.css';
 import './similarity-slider.css';
-import './sort-by.css';
+import './sort-results.css';
 import './typeahead.css';
 import './use-type.css';
 

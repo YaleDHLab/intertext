@@ -7,7 +7,7 @@ export default class Home extends React.Component {
       <div className='home'>
         <div className='home-top'>
           <h1>Discovering Text Reuse</h1>
-          <div>This application visualizes instances of text reuse within large historical text collections. To explore allusions and borrowings within this corpus, click one of the images below, or type a search into the search box above.</div>
+          <div>Intetext helps researchers visualize text reuse in large historical collections. To explore allusions and borrowings within this corpus, click one of the images below, or type a search into the search box above.</div>
         </div>
         <div className='home-blocks'>
           <Link to='/corpus-chart?unit=passage' className='home-block'>

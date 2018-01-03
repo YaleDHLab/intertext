@@ -44,5 +44,8 @@ export const getSearchUrl = (state) => {
     url += '&min_similarity=' + state.similarity.similarity[0];
     url += '&max_similarity=' + state.similarity.similarity[1];
   }
+  if (state.sort && state.sort != 'Sort By') {
+    url += '&sort=' + state.sort;
+  }
   return url;
 }
