@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import Filters from '../filters/Filters';
 import Result from './Result';
+import Loader from '../Loader';
 
 class Results extends React.Component {
   render() {
@@ -11,6 +12,7 @@ class Results extends React.Component {
       <div className='results'>
         <Filters />
         <div className='result-pair-container'>
+          {this.props.results.length === 0 ? <Loader /> : <span />}
           {this.props.results.map((result, idx) => (
             <div className='result-pair' key={idx}>
               <Result result={result} type='source' height={heights[idx]} />

@@ -3,6 +3,7 @@ import './filters.css';
 import './footer.css';
 import './header.css';
 import './home.css';
+import './loader.css';
 import './nav.css';
 import './results.css';
 import './similarity-slider.css';
