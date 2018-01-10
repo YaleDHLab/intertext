@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default class CompareIcon extends React.Component {
+export default class VisualizeIcon extends React.Component {
   render() {
     return (
       <svg xmlns='http://www.w3.org/2000/svg' x='0px' y='0px'

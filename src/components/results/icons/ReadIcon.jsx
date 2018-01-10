@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default class CompareIcon extends React.Component {
+export default class ReadIcon extends React.Component {
   render() {
     return (
       <svg className='result-footer-icon read-icon'
