@@ -4,7 +4,7 @@ import { history } from '../store';
 import { setSort } from './sort-results';
 import { setUseTypes } from './use-types';
 import { setTypeaheadField, setTypeaheadQuery,
-  setTypeaheadIndex} from './typeahead';
+  setTypeaheadIndex } from './typeahead';
 import { setDisplayed, setSimilarity } from './similarity-slider';
 
 export const receiveSearchResults = (results) => ({

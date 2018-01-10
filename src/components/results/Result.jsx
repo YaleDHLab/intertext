@@ -1,61 +1,67 @@
 import React from 'react';
+import PropTypes from 'prop-types';
+import { connect } from 'react-redux';
+import { toggleFavorite } from '../../actions/favorite';
+import ReadIcon from './icons/ReadIcon';
 import CompareIcon from './icons/CompareIcon';
 import FavoriteIcon from './icons/FavoriteIcon';
-import ReadIcon from './icons/ReadIcon';
 import VisualizeIcon from './icons/VisualizeIcon';
 
 class Result extends React.Component {
   constructor(props) {
     super(props);
-    this.getTitle = this.getTitle.bind(this)
-    this.getYear = this.getYear.bind(this)
-    this.getAuthor = this.getAuthor.bind(this)
-    this.getPrematch = this.getPrematch.bind(this)
-    this.getMatch = this.getMatch.bind(this)
-    this.getPostmatch = this.getPostmatch.bind(this)
+    this.getField = this.getField.bind(this)
+    this.favorite = this.favorite.bind(this)
+    this.compare = this.compare.bind(this)
+    this.visualize = this.visualize.bind(this)
   }
 
-  getTitle() {
-    return {__html: this.props.result[this.props.type + '_title']}
+  getField(field, prefix) {
+    var text = this.props.result[this.props.type + '_' + field];
+    prefix = prefix || '';
+    return {__html: prefix + text}
   }
 
-  getYear() {
-    return {__html: this.props.result[this.props.type + '_year']}
+  favorite() {
+    this.props.favorite({type: this.props.type, result: this.props.result})
   }
 
-  getAuthor() {
-    return {__html: this.props.result[this.props.type + '_author']}
+  compare() {
+
   }
 
-  getPrematch() {
-    return {__html: this.props.result[this.props.type + '_prematch'] + ' '}
-  }
+  visualize() {
 
-  getMatch() {
-    return {__html: this.props.result[this.props.type + '_match']}
-  }
-
-  getPostmatch() {
-    return {__html: ' ' + this.props.result[this.props.type + '_postmatch']}
   }
 
   render() {
+    const id = Object.assign([], this.props.result.match_ids)
+        .sort((a,b) => a-b).join('.');
+    const favs = this.props.favorites[this.props.type];
+    const favClass = favs.indexOf(id) > -1 ? 'favorite active' : 'favorite'
+
     return (
       <div className={'result ' + this.props.type}
           style={{height: this.props.height}}>
         <div className='result-wrapper'>
           <div className='result-top'>
-            <div className='result-title' dangerouslySetInnerHTML={this.getTitle()} />
+            <div className='result-title'
+                dangerouslySetInnerHTML={this.getField('title')} />
             <div className='result-year-container'>
-              <div className='result-year' dangerouslySetInnerHTML={this.getYear()} />
+              <div className='result-year'
+                  dangerouslySetInnerHTML={this.getField('year')} />
             </div>
           </div>
           <div className='result-body'>
-            <div className='result-author' dangerouslySetInnerHTML={this.getAuthor()} />
+            <div className='result-author'
+                dangerouslySetInnerHTML={this.getField('author')} />
             <div className='result-match'>
-              <span className='prematch' dangerouslySetInnerHTML={this.getPrematch()} />
-              <span className='match' dangerouslySetInnerHTML={this.getMatch()} />
-              <span className='postmatch' dangerouslySetInnerHTML={this.getPostmatch()} />
+              <span className='prematch'
+                  dangerouslySetInnerHTML={this.getField('prematch')} />
+              <span className='match'
+                  dangerouslySetInnerHTML={this.getField('match', ' ')} />
+              <span className='postmatch'
+                  dangerouslySetInnerHTML={this.getField('postmatch', ' ')} />
             </div>
             <div className='white-fade' />
           </div>
@@ -70,7 +76,7 @@ class Result extends React.Component {
               <CompareIcon />
               Compare
             </div>
-            <div onClick={this.favorite} className='favorite'>
+            <div onClick={this.favorite} className={favClass}>
               <FavoriteIcon />
               Favorite
             </div>
@@ -85,4 +91,18 @@ class Result extends React.Component {
   }
 }
 
-export default Result;
+Result.propTypes = {
+  favorites: PropTypes.object.isRequired,
+  favorite: PropTypes.func.isRequired,
+}
+
+const mapStateToProps = state => ({
+  favorites: state.favorites,
+})
+
+
+const mapDispatchToProps = dispatch => ({
+  favorite: (obj) => dispatch(toggleFavorite(obj))
+})
+
+export default connect(mapStateToProps, mapDispatchToProps)(Result)

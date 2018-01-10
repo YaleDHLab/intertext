@@ -4,6 +4,7 @@ import { createBrowserHistory } from 'history';
 import { createLogger } from 'redux-logger';
 import thunkMiddleware from 'redux-thunk';
 import { rootReducer } from './reducers/index';
+import { loadFavorites } from './actions/favorite';
 import { loadSearchFromUrl } from './actions/search';
 import freeze from 'redux-freeze';
 
@@ -40,5 +41,6 @@ const store = createStore(
 );
 
 store.dispatch(loadSearchFromUrl(window.location.search));
+store.dispatch(loadFavorites());
 
 export { store, history };
