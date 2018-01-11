@@ -43,11 +43,11 @@
 **/
 
 .result-pair.animated .result.source {
-  left: -2000px;
+  transform: translateX(-2000px);
 }
 
 .result-pair.animated .result.target {
-  right: -2000px;
+  transform: translateX(2000px);
 }
 
 /**
@@ -98,7 +98,7 @@
   background: #fff;
   position: relative;
   width: 520px;
-  transition: left 1s ease, right 1s ease, height 0.3s ease;
+  transition: transform 1s ease, height 0.3s ease;
   max-height: 505px;
   display: inline-block;
   text-align: left;
@@ -351,11 +351,11 @@
 * Result during compare state
 **/
 
-.result.compared .compare {
+.compare.active {
   color: #F1A21A;
 }
 
-.result.compared .compare-icon {
+.compare.active .compare-icon {
   fill: #F1A21A;
 }
 

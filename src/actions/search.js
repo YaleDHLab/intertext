@@ -3,6 +3,7 @@ import config from '../../server/config';
 import { history } from '../store';
 import { setSort } from './sort-results';
 import { setUseTypes } from './use-types';
+import { setCompare } from './compare';
 import { setTypeaheadField, setTypeaheadQuery,
   setTypeaheadIndex } from './typeahead';
 import { setDisplayed, setSimilarity } from './similarity-slider';
@@ -54,6 +55,10 @@ export const getSearchUrl = (state) => {
   if (state.sort && state.sort != 'Sort By') {
     url += '&sort=' + state.sort;
   }
+  if (state.compare.file_id && state.compare.segment_ids && state.compare.type) {
+    url += '&' + state.compare.type + '_file_id=' + state.compare.file_id;
+    url += '&' + state.compare.type + '_segment_ids=' + state.compare.segment_ids;
+  }
   return url;
 }
 
@@ -67,6 +72,7 @@ export const saveSearchInUrl = () => {
     hash += '&displayed=' + JSON.stringify(_state.similarity.displayed);
     hash += '&field=' + JSON.stringify(_state.typeahead.field);
     hash += '&useTypes=' + JSON.stringify(_state.useTypes);
+    hash += '&compare=' + JSON.stringify(_state.compare);
     try { history.push(hash) } catch(err) {}
   }
 }
@@ -87,6 +93,7 @@ export const loadSearchFromUrl = (obj) => {
     dispatch(setUseTypes(_state.useTypes))
     dispatch(setTypeaheadField(_state.field))
     dispatch(setTypeaheadQuery(_state.query))
+    dispatch(setCompare(_state.compare))
     dispatch(fetchSearchResults())
   }
 }

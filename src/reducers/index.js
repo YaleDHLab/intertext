@@ -1,5 +1,6 @@
 import { combineReducers } from 'redux';
 import searchReducer from './searchReducer';
+import compareReducer from './compareReducer';
 import naviconReducer from './naviconReducer';
 import useTypesReducer from './useTypesReducer';
 import favoriteReducer from './favoriteReducer';
@@ -9,6 +10,7 @@ import sortResultsReducer from './sortResultsReducer';
 
 export const rootReducer = combineReducers({
   search: searchReducer,
+  compare: compareReducer,
   navicon: naviconReducer,
   useTypes: useTypesReducer,
   favorites: favoriteReducer,
