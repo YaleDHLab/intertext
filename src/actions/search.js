@@ -26,10 +26,7 @@ export const fetchSearchResults = () => {
     const query = getSearchUrl(getState());
     return fetch(query)
       .then(response => response.json()
-        .then(json => ({
-          status: response.status,
-          json
-        })
+        .then(json => ({ status: response.status, json })
       ))
       .then(({ status, json }) => {
         if (status >= 400) dispatch(searchRequestFailed())
@@ -77,11 +74,11 @@ export const saveSearchInUrl = () => {
   }
 }
 
-export const loadSearchFromUrl = (obj) => {
+export const loadSearchFromUrl = (str) => {
   return (dispatch, getState) => {
-    if (!obj) return;
+    if (!str) return; // str should be window.location.search
     let _state = getState();
-    obj.substring(1).split('&').map((arg) => {
+    str.substring(1).split('&').map((arg) => {
       const split = arg.split('=');
       _state = Object.assign({}, _state, {
         [split[0]]: JSON.parse( decodeURIComponent( split[1] ) )

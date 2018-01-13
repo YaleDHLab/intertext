@@ -9,7 +9,7 @@ import navicon from '../../assets/images/icons/navicon.svg';
 class Navicon extends React.Component {
   constructor(props) {
     super(props)
-    this.handlers = this.handleClick.bind(this)
+    this.handleClick = this.handleClick.bind(this)
   }
 
   componentDidMount() {

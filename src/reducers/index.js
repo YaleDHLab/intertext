@@ -1,4 +1,5 @@
 import { combineReducers } from 'redux';
+import waffleReducer from './waffleReducer';
 import searchReducer from './searchReducer';
 import compareReducer from './compareReducer';
 import naviconReducer from './naviconReducer';
@@ -9,6 +10,7 @@ import similarityReducer from './similarityReducer';
 import sortResultsReducer from './sortResultsReducer';
 
 export const rootReducer = combineReducers({
+  waffle: waffleReducer,
   search: searchReducer,
   compare: compareReducer,
   navicon: naviconReducer,

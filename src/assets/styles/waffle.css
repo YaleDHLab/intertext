@@ -1,0 +1,233 @@
+.waffle-card-wrapper {
+  width: 100vw;
+  overflow: auto;
+  text-align: center;
+  background: #F8F8F8;
+}
+
+.waffle-card-container {
+  padding: 50px;
+  background: #F8F8F8;
+  box-sizing: border-box;
+  width: 1180px;
+  display: inline-block;
+}
+
+.waffle-chart-card {
+  width: 100%;
+  height: 270px;
+  overflow: hidden;
+  margin: 0;
+}
+
+/**
+* Controls
+**/
+
+.waffle-card-controls {
+  margin-bottom: 26px;
+}
+
+span.label {
+  margin-right: 18px;
+  font-size: .9em;
+}
+
+.waffle-button {
+  display: inline-block;
+  margin: 0 18px;
+  cursor: pointer;
+  font-size:.9em;
+}
+
+.waffle-button.active {
+  border-bottom: 2px solid #6DD1D1;
+  font-weight:600;
+}
+
+.waffle-card-controls .chart-legend {
+  margin-left: 10%;
+}
+
+/**
+* Close visualization icon
+**/
+
+.close-visualization-wrapper {
+  float: right;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.close-visualization {
+  background: url(../images/icons/close-icon.svg);
+  width: 14px;
+  height: 14px;
+}
+
+/**
+* Header
+**/
+
+.waffle-chart-card .result-top {
+  box-sizing: border-box;
+}
+
+/**
+* Body
+**/
+
+.waffle-chart-card .result-title {
+  max-width: 100%;
+}
+
+.waffle-chart-card .result-body {
+  padding: 0;
+  top: 29px;
+}
+
+/**
+* Headshots
+**/
+
+.headshot-container {
+  width: 150px;
+  height: 241px;
+  float: left;
+  text-align: center;
+  background: #E1F4F4;
+}
+
+.headshot {
+  background-repeat: no-repeat;
+  background-position: center center;
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;
+  height: 90px;
+  width: 90px;
+  display: inline-block;
+  border-radius: 100%;
+  border: 3px solid #6DD1D1;
+  margin-top: 50px;
+}
+
+.headshot-label {
+  margin: 10px 20px;
+  border-top: 1px solid #fff;
+  padding-top: 4px;
+  font-size: .9em;
+}
+
+/**
+* Chart
+**/
+
+.waffle-chart {
+  padding-left: 20px;
+  overflow: auto;
+}
+
+.waffle-chart .chart {
+  text-align: center;
+}
+
+.waffle-chart svg {
+  display: inline-block;
+}
+
+.waffle-chart rect {
+  stroke: #ffffff;
+  -webkit-backface-visibility: hidden;
+  shape-rendering: crispEdges;
+}
+
+.waffle-chart rect:hover {
+  fill: rgba(90, 187, 187, 0.7);
+}
+
+.waffle-chart rect.active {
+  fill: rgba(90, 187, 187, 1);
+}
+
+.waffle-chart g.x.axis {
+  font-size: .85em;
+}
+
+.waffle-chart text {
+  fill: #333;
+}
+
+.waffle-chart .axis path {
+  stroke-width: 0.02em;
+}
+
+path.area {
+  stroke: #EFE0DB;
+  fill: #EFE0DB;
+}
+
+/**
+* Loader
+**/
+
+.waffle-chart .loader {
+  margin: 60px auto 80px;
+  left: -10px;
+}
+
+/**
+* Active results
+**/
+
+.waffle-results-left, .waffle-results-right {
+  display: inline-block;
+  float: left;
+}
+
+.waffle-results-left {
+  margin: 0 35px 35px 0;
+}
+
+.waffle-card-result-container {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.waffle-card-result-container .similarity-circle {
+  display: none;
+}
+
+.waffle-card-results .result {
+  border: 2px solid #6DD1D1;
+  display: inline-block;
+  text-align: left;
+  margin: 0;
+  box-sizing: border-box;
+  float: left;
+}
+
+/**
+* Legend
+**/
+
+.chart-legend {
+  display: inline-block;
+}
+
+.chart-legend * {
+  display: inline-block;
+}
+
+.chart-legend span {
+  font-size: .8em;
+  color: #777;
+  margin: 0 5px;
+}
+
+.swatch {
+  width: 40px;
+  height: 8px;
+  margin: 5px 1px 0px 0px;
+}

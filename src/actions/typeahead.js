@@ -24,10 +24,7 @@ export function fetchTypeaheadResults(query) {
   return function(dispatch) {
     return fetch(query)
       .then(response => response.json()
-        .then(json => ({
-          status: response.status,
-          json
-        })
+        .then(json => ({ status: response.status, json })
       ))
       .then(({ status, json }) => {
         if (status >= 400) dispatch(typeaheadRequestFailed())
