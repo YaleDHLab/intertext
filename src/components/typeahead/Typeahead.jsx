@@ -70,7 +70,8 @@ class Typeahead extends React.Component {
         <div className='search-button' />
         <input value={this.props.query}
             onKeyUp={this.handleKeyUp}
-            onChange={this.handleChange} />
+            onChange={this.handleChange}
+            onBlur={this.handleBlur} />
         <Results submitSearch={this.submitSearch} />
       </div>
     )

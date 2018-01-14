@@ -1,7 +1,7 @@
-# Intertextualitet
+# Intertext
 > Detect and visualize text reuse.
 
-Intertextualitet combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing all happens in Python--using a combination of OCR-proof character vectors and minhashing--and the client-side web interactions all happen in React.
+Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing all happens in Python--using a combination of OCR-proof character vectors and minhashing--and the client-side web interactions all happen in React.
 
 ![App preview](/src/assets/images/preview.png?raw=true)
 

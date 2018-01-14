@@ -2,6 +2,8 @@ import React from 'react';
 import Select from './Select';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
+import { fetchSearchResults } from '../../actions/search';
+import { setTypeaheadQuery } from '../../actions/typeahead';
 
 const Result = (props) => (
   <span onClick={props.onClick}
@@ -11,6 +13,35 @@ const Result = (props) => (
 )
 
 class Results extends React.Component {
+  constructor(props) {
+    super(props)
+    this.handleMousedown = this.handleMousedown.bind(this)
+    this.handleMouseup = this.handleMouseup.bind(this)
+  }
+
+  componentDidMount() {
+    window.addEventListener('mousedown', this.handleMousedown, false)
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('mousedown', this.handleMousedown, false)
+  }
+
+  handleMousedown(e) {
+    // stop blur of input; event order: mousedown, blur, mouseup
+    if (e.target.className === 'typeahead-result') {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }
+
+  handleMouseup(e) {
+    if (!e.target.className.includes('typeahead-result')) return;
+    this.props.setTypeaheadQuery(e.target.innerText)
+    this.props.fetchSearchResults()
+    document.querySelector('.typeahead input').blur()
+  }
+
   render() {
     const className = this.props.results.length > 0 ? '' : 'hidden';
     return (
@@ -26,7 +57,7 @@ class Results extends React.Component {
         {this.props.results.map((result, idx) => {
           return <Result key={idx}
             val={result}
-            onClick={this.handleClick}
+            onClick={this.handleMouseup}
             active={idx + 1 === this.props.index}
             submitSearch={this.props.submitSearch} />
         })}
@@ -48,4 +79,9 @@ const mapStateToProps = state => ({
   index: state.typeahead.index
 })
 
-export default connect(mapStateToProps)(Results)
+const mapDispatchToProps = dispatch => ({
+  setTypeaheadQuery: (val) => dispatch(setTypeaheadQuery(val)),
+  fetchSearchResults: () => dispatch(fetchSearchResults())
+})
+
+export default connect(mapStateToProps, mapDispatchToProps)(Results)

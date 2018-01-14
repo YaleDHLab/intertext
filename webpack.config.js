@@ -32,6 +32,14 @@ const cssConfig = {
   }
 }
 
+const pathsToCopy = [
+  {
+    context: path.join(paths.src),
+    from: path.join(paths.src, 'assets/images/authors/*'),
+    to: paths.build
+  },
+]
+
 const common = {
   entry: path.join(paths.src, 'index'),
   resolve: {
@@ -87,6 +95,7 @@ const common = {
     new CleanWebpackPlugin([paths.build]),
     new HtmlWebpackPlugin(htmlConfig),
     new ExtractTextPlugin('styles.[contenthash].css'),
+    new CopyWebpackPlugin(pathsToCopy),
   ]
 };
 
