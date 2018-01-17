@@ -1,8 +1,8 @@
 {
-  "name": "intertextualitet",
+  "name": "intertext",
   "version": "0.1.0",
-  "author": "",
-  "license": "ISC",
+  "author": "Douglas Duahime",
+  "license": "MIT",
   "description": "Visualizing text reuse",
   "main": "server/server.js",
   "repository": {

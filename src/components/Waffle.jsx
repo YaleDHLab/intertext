@@ -1,10 +1,11 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import Chart from './charts/Chart';
+import Legend from './charts/Legend';
 import { connect } from 'react-redux';
 import Loader from './Loader';
 import Result from './results/Result';
-import { colors, colorScale } from './charts/colors';
+import { colorScale } from './charts/colors';
 import { getResultHeights } from './results/Results';
 import {
   hideWaffle,
@@ -27,7 +28,7 @@ class Waffle extends React.Component {
                 label={o.label}
                 setFeature={this.props.setFeature} />
             )}
-            <Legend colors={colors} />
+            <Legend />
             <div className='close-visualization-wrapper'
                 onClick={this.props.closeWaffle}>
               <div className='close-visualization'/>
@@ -91,19 +92,6 @@ const Button = (props) => {
         'waffle-button active' : 'waffle-button' }
       onClick={props.setFeature.bind(null, props.feature)}>
         {props.label}
-    </div>
-  )
-}
-
-const Legend = (props) => {
-  return (
-    <div className='chart-legend'>
-      <span>50%</span>
-      <div className='swatches'>
-        {props.colors.map((c) => <div key={c}
-          className='swatch' style={{background: c}} />)}
-      </div>
-      <span>100%</span>
     </div>
   )
 }

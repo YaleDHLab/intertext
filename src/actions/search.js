@@ -77,6 +77,7 @@ export const saveSearchInUrl = () => {
 export const loadSearchFromUrl = (str) => {
   return (dispatch, getState) => {
     if (!str) return; // str should be window.location.search
+    if (str.includes('unit=')) return; // skip scatterlot urls
     let _state = getState();
     str.substring(1).split('&').map((arg) => {
       const split = arg.split('=');

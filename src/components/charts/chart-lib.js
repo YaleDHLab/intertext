@@ -185,11 +185,21 @@ ChartLib.getScales = (elem, _props, domain) => {
             .domain(domain[a])
             .range(axes[a])
           return;
+
         case 'linear':
           scales[a] = d3.scaleLinear()
             .domain(domain[a])
             .range(axes[a])
           return;
+
+        case 'inverse':
+          scales[a] = d3.scaleLinear()
+            .domain(domain[a])
+            .range([ axes[a][1], axes[a][0] ])
+          return;
+
+        default:
+          console.warn('the requested', a, 'scale is invalid')
       }
     } else {
       scales[a] = d3.scaleLinear()
@@ -253,25 +263,23 @@ ChartLib.getAxes = (props, scales) => {
 * Draw a background grid
 **/
 
-ChartLib.drawgrid = (elem, props, scales) => {
+ChartLib.drawGrid = (elem, props, scales) => {
   const gridX = (props) => d3.axisBottom(scales.x).ticks(props.xTicks || 8);
-  const gridY = (props) => d3.axisLeft().ticks(props.yTicks || 8);
+  const gridY = (props) => d3.axisLeft(scales.y).ticks(props.yTicks || 8);
 
   d3.select(elem).select('.x.grid')
     .transition()
     .duration(1000)
-    .call(getGridlinesX(props)
+    .call(gridX(props)
       .tickSize(props.height - props.margin.top - props.margin.bottom)
-      .tickFormat('')
-    )
+      .tickFormat(''))
 
   d3.select(elem).select('.y.grid')
     .transition()
     .duration(1000)
-    .call(getGridlinesY(props)
+    .call(gridY(props)
       .tickSize(-(props.width - props.margin.left - props.margin.right))
-      .tickFormat('')
-    )
+      .tickFormat(''))
 }
 
 /**
@@ -283,55 +291,48 @@ ChartLib.drawPoint = (elem, props, domain, scales) => {
   const xKey = props.x || 'x';
   const yKey = props.y || 'y';
   const j = props.jitter || false;
+
   const dataKey = (d, i) => i;
   const x = (d, i) => j ? jitter(scales.x(d[xKey]), i) : scales.x(d[xKey])
   const y = (d, i) => j ? jitter(scales.y(d[yKey]), i) : scales.y(d[yKey])
-  const jitter = (val, idx) => {
-    return idx % 2 === 0 ?
-        val + (idx % 10)/8 * 10
-      : val - (idx % 10)/8 * 10
-  }
+  const jitter = (val, idx) => idx % 2 === 0 ?
+      val + (idx % 10)/8 * 10 : val - (idx % 10)/8 * 10;
 
   // enter
-  const g = d3.select(elem).selectAll('.point-container');
+  const g = d3.select(elem).select('.point-container');
 
   const points = g.selectAll('.point-group')
     .data(props.pointData, props.pointKey || dataKey)
 
-  const groups = points.enter()
+  const pointsEnter = points.enter()
     .append('g')
     .attr('class', 'point-group')
-    .on('mouseover', (d) => props.onMouseover ? props.onMouseover : null)
-    .on('mouseout', (d) => props.onMouseout ? props.onMouseout : null)
+    .on('mouseout', (d) => props.onMouseout ? props.onMouseout(d) : null)
+    .on('mouseenter', (d) => props.onMouseenter ? props.onMouseenter(d) : null)
 
-  groups.append('circle').attr('class', 'point')
-  groups.append('text').attr('class', 'label').attr('stroke', '#000')
+  pointsEnter.append('circle').attr('class', 'point')
+  pointsEnter.append('text').attr('class', 'label').attr('stroke', '#000')
 
   // enter + transition
-  points.merge(groups).transition()
-    .select('.point')
+  points.merge(pointsEnter).select('.point').transition()
+    .duration(1000)
     .attr('cx', x)
     .attr('cy', y)
     .attr('r', (d) => props.r ? props.r : 3)
     .attr('data-key', props.pointKey || dataKey)
-    .style('stroke', (d) => {
-      return props.pointStroke ? props.pointStroke(d) : color(d.key)
-    })
-    .style('fill', (d) => {
-      return props.pointFill ? props.pointFill(d) : color(d.key)
-    })
+    .style('fill', (d) => props.pointFill ? props.pointFill(d) : color(d.key))
+    .style('stroke', (d) => props.pointStroke ? props.pointStroke(d) : color(d.key))
 
     if (props.pointLabels) {
-      point.select('.label')
-        .transition()
+      points.merge(pointsEnter).select('.label').transition()
         .duration(1000)
         .text((d) => d.label ? d.label : '')
-        .attr('x', x)
-        .attr('y', y)
+        .attr('x', (d, i) => x(d, i) + 6)
+        .attr('y', (d, i) => y(d, i) - 6)
     }
 
   // exit
-  groups.exit().remove()
+  points.exit().remove()
 }
 
 /**
@@ -385,8 +386,7 @@ ChartLib.drawWaffle = (elem, props, domain, scales) => {
     .attr('fill', (d, i) => props.color(d[props.colorKey]))
     .attr('stroke-width', 1)
 
-  waffle.exit()
-    .remove()
+  waffle.exit().remove()
 }
 
 export default ChartLib;

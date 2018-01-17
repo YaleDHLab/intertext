@@ -7,6 +7,7 @@ import useTypesReducer from './useTypesReducer';
 import favoriteReducer from './favoriteReducer';
 import typeaheadReducer from './typeaheadReducer';
 import similarityReducer from './similarityReducer';
+import scatterplotReducer from './scatterplotReducer';
 import sortResultsReducer from './sortResultsReducer';
 
 export const rootReducer = combineReducers({
@@ -18,5 +19,6 @@ export const rootReducer = combineReducers({
   favorites: favoriteReducer,
   typeahead: typeaheadReducer,
   similarity: similarityReducer,
-  sort: sortResultsReducer
+  scatterplot: scatterplotReducer,
+  sort: sortResultsReducer,
 });

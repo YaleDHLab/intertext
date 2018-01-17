@@ -5,6 +5,7 @@ import App from './components/App';
 import Home from './components/Home';
 import Results from './components/results/Results';
 import Waffle from './components/Waffle';
+import Scatterplot from './components/Scatterplot';
 
 const routes = (
   <App>
@@ -13,6 +14,7 @@ const routes = (
         <Route exact path='/' component={Home} />
         <Route exact path='/results' component={Results} />
         <Route path='/waffle' component={Waffle} />
+        <Route path='/scatterplot' component={Scatterplot} />
       </Switch>
     </div>
   </App>

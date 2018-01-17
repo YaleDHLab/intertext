@@ -1,0 +1,23 @@
+/**
+* Legend
+**/
+
+.chart-legend {
+  display: inline-block;
+}
+
+.chart-legend * {
+  display: inline-block;
+}
+
+.chart-legend span {
+  font-size: .8em;
+  color: #777;
+  margin: 0 5px;
+}
+
+.swatch {
+  width: 40px;
+  height: 8px;
+  margin: 5px 1px 0px 0px;
+}

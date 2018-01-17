@@ -9,6 +9,7 @@ export default class AppWrapper extends React.Component {
         <div className='page-wrap'>
           <Header />
           {this.props.children}
+          <div className='push' />
         </div>
         <Footer />
       </div>
