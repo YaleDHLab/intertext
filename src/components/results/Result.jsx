@@ -50,10 +50,9 @@ class Result extends React.Component {
   }
 
   getFavoriteClass() {
-    const id = Object.assign([], this.props.result.match_ids)
-        .sort((a,b) => a-b).join('.');
+    const _id = this.props.result._id;
     const favs = this.props.favorites[this.props.type];
-    return favs.indexOf(id) > -1 ? 'favorite active' : 'favorite';
+    return favs.indexOf(_id) > -1 ? 'favorite active' : 'favorite';
   }
 
   getCompareClass() {

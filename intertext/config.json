@@ -1,0 +1,12 @@
+{
+  "infiles": "data/texts/*.txt",
+  "metadata": "data/metadata/plagiary_poets_metadata.json",
+  "n_permutations": 256,
+  "hashband_length": 4,
+  "window_size": 14,
+  "max_cores": 8,
+  "step": 4,
+  "min_similarity": 0.65,
+  "xml_tag": false,
+  "flushall": true
+}

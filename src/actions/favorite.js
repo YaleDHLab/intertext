@@ -2,12 +2,12 @@ export const sort = (arr) => Object.assign([], arr).sort((a, b) => a - b)
 
 export const toggleFavorite = (obj) => {
   return (dispatch, getState) => {
-    const matchIds = sort(obj.result.match_ids).join('.');
+    const _id = obj.result._id;
     const _state = getState();
-    if (_state.favorites[obj.type].indexOf(matchIds) > -1) {
-      dispatch(removeFavorite({type: obj.type, matchIds: matchIds}))
+    if (_state.favorites[obj.type].indexOf(_id) > -1) {
+      dispatch(removeFavorite({type: obj.type, _id: _id}))
     } else {
-      dispatch(addFavorite({type: obj.type, matchIds: matchIds}))
+      dispatch(addFavorite({type: obj.type, _id: _id}))
     }
     dispatch(saveFavorites())
   }

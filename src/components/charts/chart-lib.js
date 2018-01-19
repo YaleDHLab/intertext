@@ -308,6 +308,7 @@ ChartLib.drawPoint = (elem, props, domain, scales) => {
     .append('g')
     .attr('class', 'point-group')
     .on('mouseout', (d) => props.onMouseout ? props.onMouseout(d) : null)
+    .on('mouseover', (d) => props.onMouseover ? props.onMouseover(d) : null)
     .on('mouseenter', (d) => props.onMouseenter ? props.onMouseenter(d) : null)
 
   pointsEnter.append('circle').attr('class', 'point')
@@ -316,6 +317,7 @@ ChartLib.drawPoint = (elem, props, domain, scales) => {
   // enter + transition
   points.merge(pointsEnter).select('.point').transition()
     .duration(1000)
+    .delay((d, i) => i*2)
     .attr('cx', x)
     .attr('cy', y)
     .attr('r', (d) => props.r ? props.r : 3)

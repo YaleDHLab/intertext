@@ -1,5 +1,8 @@
 *.swp
 *.pem
+*.pyc
 *.DS_Store
 node_modules
 build
+data
+__pycache__

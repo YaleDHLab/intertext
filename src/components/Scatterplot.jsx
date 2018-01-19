@@ -71,7 +71,7 @@ class Scatterplot extends React.Component {
                 yTickFormat={(d) => parseInt(d)}
                 drawGrid={true}
                 resize={false}
-                onMouseenter={handleMouseenter.bind(
+                onMouseover={handleMouseover.bind(
                     this, this.props.setTooltip, this.props.y)}
                 onMouseout={handleMouseout.bind(this, this.props.setTooltip)}
               />
@@ -113,7 +113,7 @@ const Controls = (props) => {
 const Tooltip = (props) => {
   return (
     <div className='tooltip' style={{
-        left: props.tooltip.x + 17, top: props.tooltip.y + 20 }}>
+        left: props.tooltip.x + 5, top: props.tooltip.y + 30 }}>
       <div className='title'>{props.tooltip.title}</div>
       <div className='author'>
         {props.tooltip.author + ', ' + props.tooltip.year}
@@ -147,7 +147,7 @@ const Row = (props) => {
   return (
     <tr className='book'>
       <td className='book-number'>{ props.row.label }.</td>
-      <td className='book-title'>{getRowLabel(props)}</td>
+      <td>{getRowLabel(props)}</td>
     </tr>
   )
 }
@@ -155,7 +155,7 @@ const Row = (props) => {
 const getRowLabel = (props) => {
   switch (props.unit) {
     case 'passage':
-      return '...' + props.row.match + '...';
+      return '...' + props.row.match.split(' ').slice(0,20).join(' ') + '...';
     case 'author':
       return props.row.author;
     case 'book':
@@ -167,7 +167,7 @@ const getUnitFromUrl = () => {
   return window.location.search.substring(1).split('=')[1];
 }
 
-const handleMouseenter = (setTooltip, yearField, d) => {
+const handleMouseover = (setTooltip, yearField, d) => {
   const container = d3.select('.scatterplot-container').node();
   const mouseLocation = d3.mouse(container);
   setTooltip({

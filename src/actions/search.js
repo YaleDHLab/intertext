@@ -4,9 +4,12 @@ import { history } from '../store';
 import { setSort } from './sort-results';
 import { setUseTypes } from './use-types';
 import { setCompare } from './compare';
-import { setTypeaheadField, setTypeaheadQuery,
-  setTypeaheadIndex } from './typeahead';
 import { setDisplayed, setSimilarity } from './similarity-slider';
+import {
+  setTypeaheadField,
+  setTypeaheadQuery,
+  setTypeaheadIndex
+} from './typeahead';
 
 export const receiveSearchResults = (results) => ({
   type: 'RECEIVE_SEARCH_RESULTS', results
@@ -36,13 +39,21 @@ export const fetchSearchResults = () => {
 }
 
 export const getSearchUrl = (state) => {
-  let url = config.endpoint + 'clustered_matches?limit=1000';
-  const query = encodeURIComponent(state.typeahead.query);
-  const field = state.typeahead.field.toLowerCase();
-  if (state.useTypes.previous) {
+  let url = config.endpoint + 'matches?',
+      query = '',
+      field = '';
+  if (!state.typeahead && !state.field) return url;
+
+  if (state.typeahead.query) {
+    query = encodeURIComponent(state.typeahead.query);
+  }
+  if (state.typeahead.field) {
+    field = state.typeahead.field.toLowerCase();
+  }
+  if (state.useTypes.previous && field && query) {
     url += '&source_' + field + '=' + query;
   }
-  if (state.useTypes.later) {
+  if (state.useTypes.later && field && query) {
     url += '&target_' + field + '=' + query;
   }
   if (state.similarity.similarity) {
@@ -56,6 +67,7 @@ export const getSearchUrl = (state) => {
     url += '&' + state.compare.type + '_file_id=' + state.compare.file_id;
     url += '&' + state.compare.type + '_segment_ids=' + state.compare.segment_ids;
   }
+  url += 'limit=1000';
   return url;
 }
 

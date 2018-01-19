@@ -15,8 +15,8 @@
     "build": "./node_modules/webpack/bin/webpack.js",
     "compress": "./node_modules/webpack/bin/webpack.js",
     "production": "npm run build && node server/server.js",
-    "install-python-dependencies": "pip install -r utils/requirements.txt --user",
-    "detect-reuse": "python utils/detect_reuse.py",
+    "install-python-dependencies": "pip install -r intertext/requirements.txt --user",
+    "detect-reuse": "python intertext/minhash.py",
     "python-tests": "pytest utils/intertextualitet/tests/"
   },
   "dependencies": {

@@ -40,7 +40,6 @@ const store = createStore(
   middleware
 );
 
-store.dispatch(loadSearchFromUrl(window.location.search));
 store.dispatch(loadFavorites());
 
 export { store, history };

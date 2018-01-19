@@ -68,7 +68,7 @@ class Waffle extends React.Component {
                     xLabelRotate={20}
                     yLabel={''}
                     yDomain={[1,20]}
-                    waffleKey={'match_ids'}
+                    waffleKey={'_id'}
                     onClick={this.props.getActive}/>
                   : <Loader />
                 }

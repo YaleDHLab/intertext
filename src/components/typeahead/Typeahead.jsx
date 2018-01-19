@@ -80,7 +80,7 @@ class Typeahead extends React.Component {
 
 const buildTypeaheadQuery = (props) => {
   // build the url to which the query will be sent
-  let url = config.endpoint + 'typeahead_values' +
+  let url = config.endpoint + 'typeahead' +
     '?field=' + props.field.toLowerCase() +
     '&value=' + props.query;
   if (props.type) url += '&type=' + props.type + '_' + props.field.toLowerCase();

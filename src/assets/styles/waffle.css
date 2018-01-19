@@ -200,7 +200,7 @@ path.area {
 }
 
 .waffle-card-results .result {
-  border: 2px solid #6DD1D1;
+  outline: 3px solid #6DD1D1;
   display: inline-block;
   text-align: left;
   margin: 0;

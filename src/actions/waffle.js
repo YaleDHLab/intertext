@@ -93,9 +93,8 @@ export const requestWaffleData = () => {
 
 export const requestWaffleActiveData = (d) => {
   return (dispatch) => {
-    let query = [];
-    d.match_ids.map((m) => query.push('match_ids=' + m));
-    const url = config.endpoint + 'clustered_matches?' + query.join('&');
+    if (!d._id) {console.warn('waffle request missing _id'); return;};
+    const url = config.endpoint + 'matches?_id=' + d._id;
     return fetch(url)
       .then(response => response.json()
         .then(json => ({ status: response.status, json })
@@ -155,7 +154,7 @@ const getCellData = (_state, _data) => {
       column: col,
       xLevel: level,
       similarity: d.similarity,
-      match_ids: d.match_ids,
+      _id: d._id,
     })
   })
   return {cells: data, cols: cols};
@@ -165,7 +164,7 @@ const keys = (obj) => Object.keys(obj);
 
 const getWaffleUrl = (getState) => {
   const waffle = getState().waffle;
-  return config.endpoint + 'clustered_matches?' +
+  return config.endpoint + 'matches?' +
     waffle.type + '_file_id=' + waffle.file_id + '&limit=500';
 }
 

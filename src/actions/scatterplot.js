@@ -81,9 +81,9 @@ export const setUse = (use) => {
 
 export const fetchScatterplotResults = () => {
   return (dispatch, getState) => {
-    const query = getSearchUrl(getState());
+    const query = getSearchUrl({});
     const _state = getState().scatterplot;
-    return fetch(query)
+    return fetch(query + 'limit=500')
       .then(response => response.json()
         .then(json => ({ status: response.status, json })
       ))

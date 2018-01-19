@@ -5,7 +5,7 @@ var config = {
     port: 7092,
     prefix: 'api'
   },
-  db: 'intertextualitet'
+  db: 'intertext'
 };
 
 config.endpoint = config.api.protocol + '://' +
