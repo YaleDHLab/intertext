@@ -8,8 +8,8 @@ const webpack = require('webpack');
 const path = require('path');
 
 const paths = {
-  src: path.resolve(__dirname, 'src'),
-  build: path.resolve(__dirname, 'build')
+  src: path.resolve(__dirname, '..', 'src'),
+  build: path.resolve(__dirname, '..', 'build')
 }
 
 const uglifyConfig = {
@@ -30,6 +30,10 @@ const cssConfig = {
   cssProcessorOptions: {
     safe: true,
   }
+}
+
+const cleanConfig = {
+  root: path.resolve(__dirname, '..')
 }
 
 const pathsToCopy = [
@@ -92,7 +96,7 @@ const common = {
     ]
   },
   plugins: [
-    new CleanWebpackPlugin([paths.build]),
+    new CleanWebpackPlugin([paths.build], cleanConfig),
     new HtmlWebpackPlugin(htmlConfig),
     new ExtractTextPlugin('styles.[contenthash].css'),
     new CopyWebpackPlugin(pathsToCopy),
@@ -106,7 +110,6 @@ const devSettings = {
   },
   plugins: [
     new webpack.HotModuleReplacementPlugin(),
-    new CleanWebpackPlugin([paths.build]),
   ]
 }
 

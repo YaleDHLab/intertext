@@ -5,6 +5,7 @@ import Legend from './charts/Legend';
 import { connect } from 'react-redux';
 import Loader from './Loader';
 import Result from './results/Result';
+import headshot from '../assets/images/authors/default-headshot.jpg';
 import { colorScale } from './charts/colors';
 import { getResultHeights } from './results/Results';
 import {
@@ -15,7 +16,6 @@ import {
 
 class Waffle extends React.Component {
   render() {
-    const placeholder = 'http://localhost:7092/assets/images/authors/default_author_image.jpg';
     return (
       <div className='waffle-card-wrapper'>
         <div className='waffle-card-container'>
@@ -43,8 +43,8 @@ class Waffle extends React.Component {
             </div>
             <div className='result-body'>
               <div className='headshot-container'>
-                <div className='headshot'
-                    style={{backgroundImage: 'url(' + placeholder + ')'}} />
+                <div className='headshot' style={{ backgroundImage:
+                    'url(' + getImage(this.props.image) + ')' }} />
                 <div className='headshot-label'>
                   {this.props.author}
                 </div>
@@ -117,6 +117,14 @@ const WaffleResults = (props) => {
       </div>
     </div>
   )
+}
+
+const getImage = (image) => {
+  if (image) {
+    return image.substring(0,4) === 'src/' ? image.substring(3) : image;
+  } else {
+    return headshot;
+  }
 }
 
 const options = [

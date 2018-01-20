@@ -283,10 +283,10 @@ def format_matches(file_id_a, file_id_b, clusters):
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'])
     b_strings = get_match_strings(b_words, c['b'])
-    a_url = get_url(a_meta)
-    b_url = get_url(b_meta)
+    a_year = get_value(a_meta, 'year')
+    b_year = get_value(b_meta, 'year')
     # identify the file published first as the 'source' file
-    if a_meta['year'] < b_meta['year']:
+    if (a_year and b_year) and (a_year < b_year):
       formatted.append({
         'similarity': c['sim'],
         'source_file_id': int(file_id_a),
@@ -297,20 +297,20 @@ def format_matches(file_id_a, file_id_b, clusters):
         'target_filename': b_file,
         'source_file_path': a_path,
         'target_file_path': b_path,
-        'source_year': a_meta['year'],
-        'target_year': b_meta['year'],
-        'source_author': a_meta['author'],
-        'target_author': b_meta['author'],
-        'source_title': a_meta['title'],
-        'target_title': b_meta['title'],
         'source_prematch': a_strings['prematch'],
         'target_prematch': b_strings['prematch'],
         'source_match': a_strings['match'],
         'target_match': b_strings['match'],
         'source_postmatch': a_strings['postmatch'],
         'target_postmatch': b_strings['postmatch'],
-        'source_url': a_url,
-        'target_url': b_url,
+        'source_year': a_year,
+        'target_year': b_year,
+        'source_author': get_value(a_meta, 'author'),
+        'target_author': get_value(b_meta, 'author'),
+        'source_title': get_value(a_meta, 'title'),
+        'target_title': get_value(b_meta, 'title'),
+        'source_url': get_value(a_meta, 'url'),
+        'target_url': get_value(b_meta, 'url'),
       })
     else:
       formatted.append({
@@ -323,26 +323,26 @@ def format_matches(file_id_a, file_id_b, clusters):
         'target_filename': a_file,
         'source_file_path': b_path,
         'target_file_path': a_path,
-        'source_year': b_meta['year'],
-        'target_year': a_meta['year'],
-        'source_author': b_meta['author'],
-        'target_author': a_meta['author'],
-        'source_title': b_meta['title'],
-        'target_title': a_meta['title'],
         'source_prematch': b_strings['prematch'],
         'target_prematch': a_strings['prematch'],
         'source_match': b_strings['match'],
         'target_match': a_strings['match'],
         'source_postmatch': b_strings['postmatch'],
         'target_postmatch': a_strings['postmatch'],
-        'source_url': b_url,
-        'target_url': a_url
+        'source_year': get_value(b_meta, 'year'),
+        'target_year': get_value(a_meta, 'year'),
+        'source_author': get_value(b_meta, 'author'),
+        'target_author': get_value(a_meta, 'author'),
+        'source_title': get_value(b_meta, 'title'),
+        'target_title': get_value(a_meta, 'title'),
+        'source_url': get_value(b_meta, 'url'),
+        'target_url': get_value(a_meta, 'url')
       })
   db.matches.insert_many(formatted)
 
-def get_url(metadata):
+def get_value(d, k):
   try:
-    return metadata['url']
+    return d[k]
   except KeyError:
     return ''
 
@@ -391,6 +391,23 @@ def create_metadata_collection():
   db.metadata.insert(vals)
 
 ##
+# Metadata Helpers
+##
+
+def get_metadata():
+  print(' * loading metadata')
+  path = config['metadata']
+  metadata = json.load( open(config['metadata']) )
+  # add any missing files to the metadata
+  for c, i in enumerate(infiles):
+    if not os.path.basename(i) in metadata:
+      print(' * warning -', i, 'is missing from metadata keys')
+      metadata[ os.path.basename(i) ] = {}
+      for j in ['author', 'url', 'image', 'title', 'year']:
+        metadata[ os.path.basename(i) ][j] = str(c)
+  return metadata
+
+##
 # Main
 ##
 
@@ -412,16 +429,14 @@ if __name__ == '__main__':
   r = StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
   infiles = glob.glob(config['infiles'])
   text_ids = [str(i) for i in range(len(infiles))]
-  metadata = json.load( open(config['metadata']) )
+  metadata = get_metadata()
 
   # validate inputs are present
   if not infiles: raise Exception('No input files were found!')
 
-  # conditionally remove all extant records
+  # remove all extant records
+  r.flushall()
   db = MongoClient()['intertext']
-  if config['flushall']:
-    r.flushall()
-    [db[c].drop() for c in db.collection_names()]
-  del db
+  [db[c].drop() for c in db.collection_names()]
 
   main()

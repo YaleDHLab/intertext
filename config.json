@@ -1,0 +1,11 @@
+{
+  "infiles": "data/texts/*.txt",
+  "metadata": "data/metadata/metadata.json",
+  "xml_tag": false,
+  "max_cores": 8,
+  "step": 4,
+  "window_size": 14,
+  "n_permutations": 256,
+  "hashband_length": 3,
+  "min_similarity": 0.65
+}
