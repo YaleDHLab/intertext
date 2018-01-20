@@ -196,12 +196,13 @@ module.exports = (app) => {
   **/
 
   app.get('/api/files', (req, res, next) => {
-    if (req.query.file_path) {
-      res.sendFile(path.join(__dirname, '..', '..', req.query.file_path))
+    var fp = req.query.file_path;
+    if (fp && fp.substring(0,5) === 'data/') {
+      res.status(200).sendFile(path.join(__dirname, '..', '..', fp))
     } else {
       res.json([
-        'please query for a file_path relative to the location of server.js',
-        'e.g. ?file_path=/data/texts/34360.txt'
+        'please query for a file_path relative to the project root',
+        'e.g. /api/files?file_path=data/texts/34360.txt'
       ])
     }
   })

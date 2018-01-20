@@ -27,6 +27,9 @@ module.exports = {
     source_title: String,
     target_title: String,
 
+    source_url: String,
+    target_url: String,
+
     similarity: Number,
     created_at: Date,
     updated_at: Date,

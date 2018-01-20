@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
+import config from '../../../server/config';
 import { toggleFavorite, sort } from '../../actions/favorite';
 import { toggleCompare } from '../../actions/compare';
 import { visualize } from '../../actions/waffle';
@@ -94,10 +95,11 @@ class Result extends React.Component {
         </div>
         <div className='result-footer-container'>
           <div className='result-footer'>
-            <div onClick={this.read} className='read'>
+            <a className='read'
+                href={getHref(this.props.result, this.props.type)}>
               <ReadIcon />
               Read
-            </div>
+            </a>
             <div onClick={this.compare} className={this.getCompareClass()}>
               <CompareIcon />
               Compare
@@ -147,6 +149,11 @@ const removeAnimation = (elem) => {
   elem.className = elem.className.replace(' animated', '');
   const circle = elem.querySelector('.similarity-circle');
   circle.className = circle.className.replace(' fade-out', '');
+}
+
+const getHref = (result, type) => {
+  return result[type + '_url'] ? result[type + '_url']
+  : config.endpoint + 'files?file_path=' + result[type + '_file_path'];
 }
 
 Result.propTypes = {

@@ -54,7 +54,8 @@ def minhash_text(text_id_tuple):
 
 def get_text_content(s):
   if config['xml_tag']:
-    soup = BeautifulSoup(s, 'lxml').find(config['xml_tag'])
+    parser = 'html.parser' if infiles[0].split('.')[-1] == '.html' else 'lxml'
+    soup = BeautifulSoup(s, parser).find(config['xml_tag'])
     return soup.get_text()
   return s
 
@@ -282,6 +283,8 @@ def format_matches(file_id_a, file_id_b, clusters):
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'])
     b_strings = get_match_strings(b_words, c['b'])
+    a_url = get_url(a_meta)
+    b_url = get_url(b_meta)
     # identify the file published first as the 'source' file
     if a_meta['year'] < b_meta['year']:
       formatted.append({
@@ -305,7 +308,9 @@ def format_matches(file_id_a, file_id_b, clusters):
         'source_match': a_strings['match'],
         'target_match': b_strings['match'],
         'source_postmatch': a_strings['postmatch'],
-        'target_postmatch': b_strings['postmatch']
+        'target_postmatch': b_strings['postmatch'],
+        'source_url': a_url,
+        'target_url': b_url,
       })
     else:
       formatted.append({
@@ -329,9 +334,17 @@ def format_matches(file_id_a, file_id_b, clusters):
         'source_match': b_strings['match'],
         'target_match': a_strings['match'],
         'source_postmatch': b_strings['postmatch'],
-        'target_postmatch': a_strings['postmatch']
+        'target_postmatch': a_strings['postmatch'],
+        'source_url': b_url,
+        'target_url': a_url
       })
   db.matches.insert_many(formatted)
+
+def get_url(metadata):
+  try:
+    return metadata['url']
+  except KeyError:
+    return ''
 
 def get_text_id_to_path():
   d = {}
@@ -393,14 +406,17 @@ def main():
   create_metadata_collection()
 
 if __name__ == '__main__':
-  with open( os.path.join('intertext', 'config.json') ) as f:
+  with open('config.json') as f:
     config = json.load(f)
 
   r = StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
   infiles = glob.glob(config['infiles'])
   text_ids = [str(i) for i in range(len(infiles))]
   metadata = json.load( open(config['metadata']) )
-  
+
+  # validate inputs are present
+  if not infiles: raise Exception('No input files were found!')
+
   # conditionally remove all extant records
   db = MongoClient()['intertext']
   if config['flushall']:
