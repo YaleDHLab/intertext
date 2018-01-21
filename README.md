@@ -143,7 +143,13 @@ CONFIG SET maxmemory {{ maximum_memory_in_bytes }}
 For example, to set the maximum memory to 2GB, you can run:
 
 ```
-CONFIG SET maxmemory 2000000000
+CONFIG SET maxmemory 2gb
+```
+
+Within the Redis shell, one should also specify a [memory policy](https://redis.io/topics/lru-cache) that controls the logic according to which objects are kept in RAM or moved to disk after Redis hits the maxmemory ceiling:
+
+```
+CONFIG SET maxmemory-policy allkeys-lru
 ```
 
 Please be aware that the Redis will sometimes use more than the maximum specified RAM allocation. This happens for two reasons: the first is that Redis checks RAM usage only periodically, so usage may climb above the upper bound between RAM checks, and the second is that the Redis process "forks" itself periodically to transfer data from RAM to disk. During each fork, the amount of RAM Redis uses doubles, so if one sets an upper bound of 2GB for a Redis process, Redis may require roughly 6GB of RAM during periods of data processing.
