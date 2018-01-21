@@ -3,17 +3,18 @@ from multiprocessing import Pool
 from collections import defaultdict
 from datasketch import MinHash
 from difflib import SequenceMatcher
-from pymongo import MongoClient
+from pymongo import MongoClient, InsertOne, UpdateOne
 from redis import StrictRedis
 from nltk import ngrams
 from bs4 import BeautifulSoup
 import glob, json, sys, os
 
 ##
-# Minhash
+# Minhash - store hashband: text_id.segment_id for each text
 ##
 
 def minhash_texts():
+  print(' * minhashing texts')
   text_id_tuples = ((c, i) for c, i in enumerate(infiles))
   pool = Pool(config['max_cores'])
   for c, _ in enumerate(pool.imap(minhash_text, text_id_tuples)):
@@ -29,28 +30,36 @@ def minhash_text(text_id_tuple):
   a hashband (hash.hash.hash...), and add file_id.segment_offset
   to the list of segments with the given hashband.
   '''
-  pipe = r.pipeline()
+  pipe = Pipe('minhashes')
   text_id, text_path = text_id_tuple
+  for window_id, window in enumerate(get_windows(text_path)):
+    passage_id = str(text_id) + '.' + str(window_id)
+    for hashband in get_hashbands(window):
+      pipe.sadd('minhash-' + hashband, passage_id)
+      if len(pipe) >= 10000:
+        pipe.execute()
+        pipe = Pipe('minhashes')
+  if len(pipe):
+    pipe.execute()
+
+def get_windows(text_path):
   with open(text_path) as f:
     words = get_text_content(f.read()).lower().split()
-    for window_id, window in enumerate(ngrams(words, config['window_size'])):
-      if window_id % config['step'] != 0:
-        continue
-      minhash = MinHash(num_perm=config['n_permutations'], seed=1)
-      passage_id = str(text_id) + '.' + str(window_id)
-      for ngram in set(ngrams(' '.join(window), 3)):
-        minhash.update( ''.join(ngram).encode('utf8') )
+  for window_id, window in enumerate(ngrams(words, config['window_size'])):
+    if window_id % config['step'] == 0:
+      yield window
+
+def get_hashbands(window):
+  minhash = MinHash(num_perm=config['n_permutations'], seed=1)
+  for ngram in set(ngrams(' '.join(window), 3)):
+    minhash.update( ''.join(ngram).encode('utf8') )
+  hashband_vals = []
+  for c, i in enumerate(minhash.hashvalues):
+    hashband_vals.append(i)
+    if len(hashband_vals) == config['hashband_length']:
+      hashband = '.'.join([str(j) for j in hashband_vals])
       hashband_vals = []
-      for i in minhash.hashvalues:
-        hashband_vals.append(i)
-        if len(hashband_vals) == config['hashband_length']:
-          hashband = '.'.join([str(j) for j in hashband_vals])
-          hashband_vals = []
-          pipe.sadd('minhash-' + hashband, passage_id)
-          if len(pipe) >= 10000:
-            pipe.execute()
-            pipe = r.pipeline()
-  pipe.execute()
+      yield hashband
 
 def get_text_content(s):
   if config['xml_tag']:
@@ -59,88 +68,58 @@ def get_text_content(s):
     return soup.get_text()
   return s
 
-def map_hashes_to_id_pairs():
+##
+# Store text-matches-fid : [fid.sid, fid’.sid’]
+##
+
+def match_minhash_keys():
   minhash_keys = r.keys('minhash-*')
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(map_hash_to_id_pairs, minhash_keys)):
+  for c, _ in enumerate(pool.imap(match_minhash_key, minhash_keys)):
     c += 1
     if c % 1000 == 0:
-      print(' * mapped', c, 'of', len(minhash_keys), 'key ranges')
+      print(' * matched', c, 'of', len(minhash_keys), 'minhash keys')
   pool.close()
   pool.join()
 
-def map_hash_to_id_pairs(minhash_key):
+def match_minhash_key(minhash_key):
   '''
-  Find all keys in Redis that contain minhash-*. Those keys have the
-  form minhash-int.int, where each int is a minhash of a segment.
-  Those keys have values with the form int_a.int_b, where int_a is
-  a file id and int_b is a segment offset denoting a file with the
-  given minhash. For each minhash-* key with multiple values,
-  find all combinations of those values, and for each, if the
-  combination does not have the same file id, add the minhash-*
-  key to the set of minhash bands shared by this file id pair.
+  minhash_key is a key in Redis with the structure minhash-VAL,
+  where val is a minhash hashband, and values with the structure
+  file_id.segment_id. Find all combinations of all values assigned
+  to `minhash_key`, and store each with the following structure:
+  text-matches-fid = [fid.sid, fid'.sid'], where fid is a file id,
+  sid is a segment id, and given two file ids, the higher of the two
+  is designed fid while the lower is designated fid'
   '''
-  pipe = r.pipeline()
+  pipe = Pipe('text-matches')
   values = r.smembers(minhash_key)
   if len(values) > 1:
     for id_pair in ngrams(values, 2):
-      if id_pair[0].split('.')[0] != id_pair[1].split('.')[0]:
-        id_pair_key = 'id-pair-' + '-'.join([i for i in id_pair])
-        pipe.sadd(id_pair_key, minhash_key)
-  pipe.execute()
-
-def count_all_matches():
-  pool = Pool(config['max_cores'])
-  id_pairs = r.keys('id-pair-*')
-  for c, _ in enumerate(pool.imap(count_matches, id_pairs)):
-    c += 1
-    if c % 1000 == 0:
-      print(' * completed', c, 'of', len(id_pairs), 'match pairs')
-  pool.close()
-  pool.join()
-
-def count_matches(id_pair):
-  '''
-  Count the total number of matches between a file id pair,
-  and add that file id pair to the set of all files with the given
-  number of matches.
-  '''
-  matches = r.smembers(id_pair)
-  r.sadd('matches-' + str(len(matches)), id_pair)
-
-##
-# Find Matches
-##
-
-def get_text_ids():
-  '''
-  Store each match between files in a set of matches assigned to the
-  higher file id (to minimize i/o during the string compare step.
-  '''
-  pipe = r.pipeline()
-  for i in r.keys('matches-*'):
-    for match in r.smembers(i):
-      texts = match.replace('id-pair-','').split('-')
-      id_one, _ = texts[0].split('.')
-      id_two, _ = texts[1].split('.')
-      if id_one > id_two:
-        pipe.sadd('text-matches-' + id_one, texts[0] + '-' + texts[1])
-      elif id_two > id_one:
-        pipe.sadd('text-matches-' + id_two, texts[1] + '-' + texts[0])
-      if len(pipe) >= 10000:
-        pipe.execute()
-        pipe = r.pipeline()
+      file_id_a, file_segment_a = id_pair[0].split('.')
+      file_id_b, file_segment_b = id_pair[1].split('.')
+      if file_id_a != file_id_b:
+        val = '-'.join(id_pair)
+        if file_id_a > file_id_b:
+          key = 'text-matches-' + file_id_a
+        else:
+          key = 'text-matches-' + file_id_b
+        pipe.sadd(key, val)
   if len(pipe):
     pipe.execute()
 
-def find_all_text_matches():
+##
+# Validate all proposed matches
+##
+
+def validate_all_matches():
   pool = Pool(config['max_cores'])
-  for result in pool.imap(find_text_matches, text_ids):
-    pass
+  for c, _ in enumerate(pool.imap(validate_text_matches, text_ids)):
+    print(' * validated', c+1, 'of', len(text_ids), 'file matches')
   pool.close()
   pool.join()
 
-def find_text_matches(text_id):
+def validate_text_matches(text_id):
   '''
   For each `text_id`, build a dictionary with matching text ids as keys
   and match segment ids as values. Then for each matching text, compare
@@ -159,10 +138,10 @@ def find_text_matches(text_id):
     else:
       d[id_one].append((window_two, window_one))
 
-  pipe = r.pipeline()
-  text_grams = get_text_segments(text_id)
+  pipe = Pipe('true-matches')
+  text_grams = list( get_windows(infiles[int(text_id)]) )
   for match_text_id in d:
-    match_grams = get_text_segments(match_text_id)
+    match_grams = list( get_windows(infiles[int(match_text_id)]) )
     for text_window_id, match_window_id in d[match_text_id]:      
       text_window = ' '.join(text_grams[ int(text_window_id) ])
       match_window = ' '.join(match_grams[ int(match_window_id) ])
@@ -173,11 +152,6 @@ def find_text_matches(text_id):
         pipe.sadd(key, value)
   pipe.execute()
 
-def get_text_segments(text_id):
-  with open(infiles[int(text_id)]) as f:
-    words = get_text_content(f.read()).lower().split()
-    return list(ngrams(words, config['window_size']))
-
 def sim(a, b):
   return SequenceMatcher(None, a, b, autojunk=False).ratio()
 
@@ -187,8 +161,8 @@ def sim(a, b):
 
 def cluster_all_matches():
   pool = Pool(config['max_cores'])
-  for _ in pool.imap(cluster_file_matches, text_ids):
-    pass
+  for c, _ in enumerate(pool.imap(cluster_file_matches, text_ids)):
+    print(' * clustered matches for', c+1, 'of', len(text_ids), 'files')
   pool.close()
   pool.join()
 
@@ -242,8 +216,8 @@ def sequences(l):
   '''
   sequences = []
   for i in sorted( list( set(l) ) ):
-    # segment ids don't increment by 1, they increment by config.step
-    if not sequences or sequences[-1][-1] != i-config['step']:
+    # check if each is 1 more than the last, as segment ids increment by 1
+    if not sequences or sequences[-1][-1] != i-1:
       sequences.append([])
     sequences[-1].append(i)
   return sequences
@@ -353,13 +327,50 @@ def get_text_id_to_path():
   return d
 
 def get_match_strings(words, segment_ids):
-  start = min(segment_ids)
-  end = max(segment_ids) + config['window_size']
+  start = min(segment_ids) * config['step']
+  end = max(segment_ids) * config['step'] + config['window_size']
   return {
     'prematch': ' '.join(words[max(0, start-config['window_size']):start]),
     'match': ' '.join(words[start:end]),
     'postmatch': ' '.join(words[end:end + config['window_size']])
   }
+
+##
+# Data Processing Pipe
+##
+
+class Pipe:
+  def __init__(self, table='undefined'):
+    self.cache = config['cache']
+    self.table = table
+    self.init()
+
+  def __len__(self):
+    return len(self.p)
+
+  def init(self):
+    if self.cache == 'redis':
+      self.p = r.pipeline()
+    else:
+      self.p = []
+
+  def sadd(self, key, value):
+    if self.cache == 'redis':
+      self.p.sadd(key, value)
+    else:
+      k = {'key': key}
+      v = {'$push': {'vals': value}}
+      self.p.append( UpdateOne(k, v, upsert=True) )
+
+  def execute(self):
+    if self.cache == 'redis':
+      self.p.execute()
+    else:
+      # w=0 disables write concern - ie doesn't fail if one insert fails
+      db = MongoClient()['intertext']
+      db[self.table].bulk_write(self.p, ordered=False,
+          bypass_document_validation=True)
+    self.init()
 
 ##
 # Create other collections
@@ -408,25 +419,35 @@ def get_metadata():
   return metadata
 
 ##
+# Config Helpers
+##
+
+def get_config():
+  defaults = {'cache': 'redis'}
+  with open('config.json') as f:
+    config = json.load(f)
+  for k in defaults:
+    if not k in config:
+      config[k] = defaults[k]
+  return config
+
+##
 # Main
 ##
 
 def main():
   minhash_texts()
-  map_hashes_to_id_pairs()
-  count_all_matches()
-  get_text_ids()
-  find_all_text_matches()
+  match_minhash_keys()
+  validate_all_matches()
   cluster_all_matches()
   create_typeahead_collection()
   create_config_collection()
   create_metadata_collection()
 
 if __name__ == '__main__':
-  with open('config.json') as f:
-    config = json.load(f)
 
   r = StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
+  config = get_config()
   infiles = glob.glob(config['infiles'])
   text_ids = [str(i) for i in range(len(infiles))]
   metadata = get_metadata()
