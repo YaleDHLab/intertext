@@ -3,44 +3,46 @@ from multiprocessing import Pool
 from collections import defaultdict
 from datasketch import MinHash
 from difflib import SequenceMatcher
-from pymongo import MongoClient, InsertOne, UpdateOne
-from redis import StrictRedis
+from pymongo import MongoClient
+from shutil import rmtree
 from nltk import ngrams
 from bs4 import BeautifulSoup
 import glob, json, sys, os
 
 ##
-# Minhash - store hashband: text_id.segment_id for each text
+# Filter keys - identify hashbands that occur 2+ times
 ##
 
-def minhash_texts():
-  print(' * minhashing texts')
-  text_id_tuples = ((c, i) for c, i in enumerate(infiles))
+def count_hashbands():
+  print(' * counting hashbands')
+  rm_dirs('tmp')
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(minhash_text, text_id_tuples)):
-    print(' * minhashed', c+1, 'of', len(infiles), 'texts')
+  for c, _ in enumerate(pool.imap(count_file_hashbands, text_ids)):
+    print(' * counted', c+1, 'of', len(infiles), 'hashbands')
   pool.close()
   pool.join()
 
-def minhash_text(text_id_tuple):
-  '''
-  For each window of words in each input text, compute several
-  minhashes for each sequence of 3 characters in that window.
-  Combine `config[hashband_length]` of these minhashes into
-  a hashband (hash.hash.hash...), and add file_id.segment_offset
-  to the list of segments with the given hashband.
-  '''
-  pipe = Pipe('minhashes')
-  text_id, text_path = text_id_tuple
+def count_file_hashbands(text_id):
+  text_path = infiles[int(text_id)]
   for window_id, window in enumerate(get_windows(text_path)):
-    passage_id = str(text_id) + '.' + str(window_id)
     for hashband in get_hashbands(window):
-      pipe.sadd('minhash-' + hashband, passage_id)
-      if len(pipe) >= 10000:
-        pipe.execute()
-        pipe = Pipe('minhashes')
-  if len(pipe):
-    pipe.execute()
+      a, b = hashband[0:2], hashband[2:4]
+      outdir = os.path.join('tmp', 'hashbands', a, b)
+      make_dirs(outdir)
+      with open( os.path.join(outdir, a + b), 'a') as out:
+        out.write(hashband + '-' + text_id + '.' + str(window_id) + '#')
+
+def rm_dirs(path):
+  try:
+    rmtree('tmp')
+  except FileNotFoundError:
+    pass
+
+def make_dirs(path):
+  try:
+    os.makedirs(path)
+  except FileExistsError:
+    pass
 
 def get_windows(text_path):
   with open(text_path) as f:
@@ -69,44 +71,81 @@ def get_text_content(s):
   return s
 
 ##
-# Store text-matches-fid : [fid.sid, fid’.sid’]
+# Use hashband datastore to map file_ids to list of matching_file_ids
 ##
 
 def match_minhash_keys():
-  minhash_keys = r.keys('minhash-*')
+  dirs = glob.glob(os.path.join('tmp', 'hashbands', '*',))
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(match_minhash_key, minhash_keys)):
+  for c, _ in enumerate(pool.imap(match_minhash_key, dirs)):
     c += 1
-    if c % 1000 == 0:
-      print(' * matched', c, 'of', len(minhash_keys), 'minhash keys')
+    if c % 100 == 0:
+      print(' * processed', c, 'of', len(dirs), 'minhash blocks')
   pool.close()
   pool.join()
 
-def match_minhash_key(minhash_key):
+def match_minhash_key(_dir):
   '''
-  minhash_key is a key in Redis with the structure minhash-VAL,
-  where val is a minhash hashband, and values with the structure
-  file_id.segment_id. Find all combinations of all values assigned
-  to `minhash_key`, and store each with the following structure:
-  text-matches-fid = [fid.sid, fid'.sid'], where fid is a file id,
-  sid is a segment id, and given two file ids, the higher of the two
-  is designed fid while the lower is designated fid'
+  dir contains a number of subdirectories, each of which contains
+  a file with hashbands and segment identifiers. For each hashband
+  in any file that occurs in multiple distinct files, find all
+  combinations among the file_id and segment_ids in which it occurs
+  and store each with the following structure: d[fid] =
+  [fid.sid, fid'.sid'], where fid is a file id, sid is a segment id,
+  and given two file ids, the higher of the two is designated fid while
+  the lower is designated fid'. Then save the values of each fid key
+  to a file in tmp/matches/{{ fid }}
   '''
-  pipe = Pipe('text-matches')
-  values = r.smembers(minhash_key)
-  if len(values) > 1:
-    for id_pair in ngrams(values, 2):
-      file_id_a, file_segment_a = id_pair[0].split('.')
-      file_id_b, file_segment_b = id_pair[1].split('.')
-      if file_id_a != file_id_b:
-        val = '-'.join(id_pair)
-        if file_id_a > file_id_b:
-          key = 'text-matches-' + file_id_a
-        else:
-          key = 'text-matches-' + file_id_b
-        pipe.sadd(key, val)
-  if len(pipe):
-    pipe.execute()
+  d = defaultdict(list)
+  count = 0
+  for _file in glob.glob(os.path.join(_dir, '*', '*')):
+    for matching_ids in get_matching_ids(_file):
+      for id_pair in ngrams(matching_ids, 2):
+        file_id_a, file_segment_a = id_pair[0].split('.')
+        file_id_b, file_segment_b = id_pair[1].split('.')
+        if file_id_a != file_id_b:
+          if file_id_a > file_id_b:
+            d[file_id_a].append( id_pair[0] + '-' + id_pair[1] )
+          else:
+            d[file_id_b].append( id_pair[1] + '-' + id_pair[0] )
+          count += 1
+        if count >= 10000:
+          save_matches(d)
+          d = defaultdict(list)
+          count = 0
+  if count:
+    save_matches(d)
+
+def get_matching_ids(file_path):
+  '''
+  file_path points to a file on disk with data in the following format:
+  hashband-file_id.segment_id#. Partition the file contents into separate
+  hashbands, store each in a dictionary, and return a list of lists
+  where sublists have the format: [file_id.segment_id]
+  '''
+  matching_ids = []
+  with open(file_path) as f:
+    f = f.read()
+  d = defaultdict(list)
+  for i in f.split('#')[:-1]:
+    hashband, file_ids = i.split('-')
+    d[hashband].append(file_ids)
+  for key in d:
+    if len(d[key]) > 1:
+      matching_ids.append(d[key])
+  return matching_ids
+
+def save_matches(d):
+  '''
+  d is a defaultdict whose keys represent file ids and whose values
+  are lists of strings in the form: fid.sid-fid'.sid'. Add all
+  file and segment ids for each file id to disk
+  '''
+  for i in d:
+    outdir = os.path.join('tmp', 'matches')
+    make_dirs(outdir)
+    with open(os.path.join('tmp', 'matches', i), 'a') as out:
+      out.write('#'.join(d[i]) + '#')
 
 ##
 # Validate all proposed matches
@@ -114,46 +153,64 @@ def match_minhash_key(minhash_key):
 
 def validate_all_matches():
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(validate_text_matches, text_ids)):
-    print(' * validated', c+1, 'of', len(text_ids), 'file matches')
+  match_files = glob.glob(os.path.join('tmp', 'matches', '*'))
+  for c, _ in enumerate(pool.imap(validate_text_matches, match_files)):
+    print(' * validated', c+1, 'of', len(match_files), 'file matches')
   pool.close()
   pool.join()
 
-def validate_text_matches(text_id):
+def validate_text_matches(match_file):
   '''
-  For each `text_id`, build a dictionary with matching text ids as keys
+  match_file is a path to a file for which the filename is the file id
+  and for which the file content is a sequence of items in the following
+  format: fid.sid-fid'.sid'#. Partition out each of those matches,
+  organize them into a dictionary with matching text ids as keys
   and match segment ids as values. Then for each matching text, compare
   the match segment pairs from `text_id` and the matching text to assess
   similarity. If the similarity is greater than `config.min_similarity`,
   add segment_id.match_segment_id to the set of values assigned to the
   true-matches-file_id-match_file_id key.
   '''
-  d = defaultdict(list) # d[text_id] = [(window_id, match_window_id)]
-  for i in r.smembers('text-matches-' + text_id):
-    texts = i.split('-')
-    id_one, window_one = texts[0].split('.')
-    id_two, window_two = texts[1].split('.')
-    if text_id == id_one:
-      d[id_two].append((window_one, window_two))
-    else:
-      d[id_one].append((window_two, window_one))
-
-  pipe = Pipe('true-matches')
+  validated = ''
+  text_id = os.path.basename(match_file)
+  text_matches = get_text_matches(match_file)
   text_grams = list( get_windows(infiles[int(text_id)]) )
-  for match_text_id in d:
+  for match_text_id in text_matches:
     match_grams = list( get_windows(infiles[int(match_text_id)]) )
-    for text_window_id, match_window_id in d[match_text_id]:      
-      text_window = ' '.join(text_grams[ int(text_window_id) ])
-      match_window = ' '.join(match_grams[ int(match_window_id) ])
+    for text_window_id, match_window_id in text_matches[match_text_id]:
+      text_window = ' '.join(text_grams[ text_window_id ])
+      match_window = ' '.join(match_grams[ match_window_id ])
       similarity = sim(text_window, match_window)
       if similarity >= config['min_similarity']:
-        key = 'true-matches-' + text_id + '.' + match_text_id
-        value = str(text_window_id) + '.' + str(match_window_id) + '-' + str(similarity)
-        pipe.sadd(key, value)
-  pipe.execute()
+        file_ids = text_id + '.' + str(text_window_id)
+        match_ids = match_text_id + '.' + str(match_window_id)
+        validated += file_ids + '-' + match_ids + '|' + str(similarity) + '#'
+  save_validated_matches(text_id, validated)
 
 def sim(a, b):
   return SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+def get_text_matches(match_file):
+  '''
+  match_file is the path to a file on disk with data in the format
+  fid.sid-fid'.sid'. Parse out all matching segments and organize
+  them into a dictionary with the format d[match_text_id] =
+  [window_id, match_window_id]
+  '''
+  d = defaultdict(list)
+  with open(match_file) as f:
+    for i in f.read().split('#')[:-1]:
+      file_ids, match_ids = i.split('-')
+      file_id, file_segment_id = file_ids.split('.')
+      match_id, match_segment_id = match_ids.split('.')
+      d[match_id].append(( int(file_segment_id), int(match_segment_id) ))
+  return d
+
+def save_validated_matches(text_id, content):
+  out_dir = os.path.join('tmp', 'validated')
+  make_dirs(out_dir)
+  with open(os.path.join(out_dir, text_id), 'a') as out:
+    out.write(content)
 
 ##
 # Cluster Matches
@@ -161,21 +218,46 @@ def sim(a, b):
 
 def cluster_all_matches():
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(cluster_file_matches, text_ids)):
-    print(' * clustered matches for', c+1, 'of', len(text_ids), 'files')
+  validated_files = glob.glob(os.path.join('tmp', 'validated', '*'))
+  for c, _ in enumerate(pool.imap(cluster_file_matches, validated_files)):
+    print(' * clustered matches in', c+1, 'of', len(validated_files), 'files')
   pool.close()
   pool.join()
 
-def cluster_file_matches(text_id_a):
-  for i in r.keys('true-matches-' + text_id_a + '.*'):
-    text_id_a, text_id_b = [int(j) for j in i.split('-')[-1].split('.')]
-    segments = []
-    for j in r.smembers(i):
-      seg_ids, similarity = j.split('-')
-      seg_a, seg_b = [int(k) for k in str(seg_ids).split('.')]
-      segments.append([seg_a, seg_b, float(similarity) ])
-    clusters = cluster(segments)
+def cluster_file_matches(validated_file):
+  '''
+  validated_file is the path to a file in which the filename is a file id
+  and the content is a sequence of values with the format:
+  fid.sid-fid'.sid'|similarity#. Each of these values represents a validated
+  match. Parse out each match value into a dictionary with the shape
+  d[match_file_id] = [(int(file_segment_id), int(match_segment_id), float(sim))]
+  then format the matches and save in mongo.
+  '''
+  text_id_a = int( os.path.basename(validated_file) )
+  validated_matches = get_validated_matches(validated_file)
+  if not validated_matches: return None
+  for text_id_b in validated_matches:
+    text_id_b = int(text_id_b)
+    clusters = cluster(validated_matches[text_id_b])
     format_matches(text_id_a, text_id_b, clusters)
+
+def get_validated_matches(validated_file):
+  '''
+  validated file is a path to a file on disk with data in the form:
+  fid.sid-fid'.sid'|similarity#. Parse out each observation and return
+  in a dictionary with the form: d[match_file_id] =
+  [(int(file_segment_id), int(match_segment_id), float(similarity))]
+  '''
+  d = defaultdict(list)
+  with open(validated_file) as f:
+    for i in f.read().split('#')[:-1]:
+      if not i: return None
+      ids, sim = i.split('|')
+      file_ids, match_ids = ids.split('-')
+      file_id, file_segment_id = [int(j) for j in file_ids.split('.')]
+      match_file_id, match_segment_id = [int(j) for j in match_ids.split('.')]
+      d[match_file_id].append(( file_segment_id, match_segment_id, float(sim) ))
+  return d
 
 def cluster(l):
   '''
@@ -184,8 +266,8 @@ def cluster(l):
   Using the sim values in each iterable, compute the mean sim for each
   passage cluster.
   '''
-  a = [t[0] for t in l]
-  b = [t[1] for t in l]
+  a = [w[0] for w in l]
+  b = [w[1] for w in l]
   d = nested(l)
 
   clusters = []
@@ -336,43 +418,6 @@ def get_match_strings(words, segment_ids):
   }
 
 ##
-# Data Processing Pipe
-##
-
-class Pipe:
-  def __init__(self, table='undefined'):
-    self.cache = config['cache']
-    self.table = table
-    self.init()
-
-  def __len__(self):
-    return len(self.p)
-
-  def init(self):
-    if self.cache == 'redis':
-      self.p = r.pipeline()
-    else:
-      self.p = []
-
-  def sadd(self, key, value):
-    if self.cache == 'redis':
-      self.p.sadd(key, value)
-    else:
-      k = {'key': key}
-      v = {'$push': {'vals': value}}
-      self.p.append( UpdateOne(k, v, upsert=True) )
-
-  def execute(self):
-    if self.cache == 'redis':
-      self.p.execute()
-    else:
-      # w=0 disables write concern - ie doesn't fail if one insert fails
-      db = MongoClient()['intertext']
-      db[self.table].bulk_write(self.p, ordered=False,
-          bypass_document_validation=True)
-    self.init()
-
-##
 # Create other collections
 ##
 
@@ -436,7 +481,7 @@ def get_config():
 ##
 
 def main():
-  minhash_texts()
+  count_hashbands()
   match_minhash_keys()
   validate_all_matches()
   cluster_all_matches()
@@ -446,7 +491,6 @@ def main():
 
 if __name__ == '__main__':
 
-  r = StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
   config = get_config()
   infiles = glob.glob(config['infiles'])
   text_ids = [str(i) for i in range(len(infiles))]
@@ -456,7 +500,6 @@ if __name__ == '__main__':
   if not infiles: raise Exception('No input files were found!')
 
   # remove all extant records
-  r.flushall()
   db = MongoClient()['intertext']
   [db[c].drop() for c in db.collection_names()]
 

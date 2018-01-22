@@ -7,11 +7,10 @@ Intertext combines machine learning with interactive data visualizations to surf
 
 ## Dependencies
 
-This application uses Redis as a chache and MongoDB as a database. You can install and start them on OSX with the following:
+This application uses MongoDB as a database. You can install and start MongoDB on OSX with the following:
 
 ```
-brew install redis mongodb
-brew services start redis
+brew install mongodb
 brew services start mongodb
 ```
 
@@ -132,30 +131,6 @@ All metadata fields are optional, though all are expressed somewhere in the brow
 }
 ```
 
-## Configuring RAM Usage
-
-To set an upper-bound to the amount of RAM Redis will use during data processing, you can run `redis-cli` from a terminal to enter the Redis shell, then type:
-
-```
-CONFIG SET maxmemory {{ maximum_memory_in_bytes }}
-```
-
-For example, to set the maximum memory to 2GB, you can run:
-
-```
-CONFIG SET maxmemory 2gb
-```
-
-Within the Redis shell, one should also specify a [memory policy](https://redis.io/topics/lru-cache) that controls the logic according to which objects are kept in RAM or moved to disk after Redis hits the maxmemory ceiling:
-
-```
-CONFIG SET maxmemory-policy allkeys-lru
-```
-
-Please be aware that the Redis will sometimes use more than the maximum specified RAM allocation. This happens for two reasons: the first is that Redis checks RAM usage only periodically, so usage may climb above the upper bound between RAM checks, and the second is that the Redis process "forks" itself periodically to transfer data from RAM to disk. During each fork, the amount of RAM Redis uses doubles, so if one sets an upper bound of 2GB for a Redis process, Redis may require roughly 6GB of RAM during periods of data processing.
-
-When in doubt, set a conservative upper bound to the maximum RAM allocation.
-
 ## Deploying on AWS
 
 The following covers steps you can take to deploy this application on an Amazon Linux AMI on AWS.
@@ -166,7 +141,6 @@ While creating the instance, add the following Custom TCP Ports to the default s
 | ----------- | ------ | ----------- |
 | 80 | 0.0.0.0/0, ::/0 | HTTP |
 | 443 | 0.0.0.0/0, ::/0 | HTTPS |
-| 6379 | 0.0.0.0/0, ::/0 | Redis |
 | 27017 | 0.0.0.0/0, ::/0 | MongoDB |
 
 After creating and ssh-ing to the instance, you can install all application dependencies, process the sample data, and start the web server with the following commands.
@@ -202,18 +176,6 @@ gpgkey=https://www.mongodb.org/static/pgp/server-3.4.asc
 sudo yum install -y mongodb-org
 sudo service mongod start
 sudo chkconfig mongod on
-
-##
-# Redis
-##
-
-# install Redis
-wget https://gist.githubusercontent.com/duhaime/c401e86d2c4f89cf079044e1474f8f84/raw/41f4d4ed66409fcd30f2fd9a1a5b270687798e5a/install_redis.sh
-bash install_redis.sh
-rm install_redis.sh
-
-# restart the Redis server
-sudo service redis-server restart
 
 ##
 # Python dependencies
