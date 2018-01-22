@@ -2,6 +2,7 @@
 *.pem
 *.pyc
 *.DS_Store
+tmp
 node_modules
 build
 __pycache__
