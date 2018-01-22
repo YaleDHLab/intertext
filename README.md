@@ -14,13 +14,7 @@ brew install mongodb
 brew services start mongodb
 ```
 
-For data processing, this app uses Python 3.5 and the Python package manager pip. We highly recommend installing Anaconda, starting a conda environment, then installing the Python dependencies:
-
-```
-pip install -r intertext/requirements.txt --user
-```
-
-Finally, this app uses Node.js as a web server. You can install Node on OSX with the following command:
+This app also uses Node.js as a web server. You can install Node on OSX with the following command:
 
 ```
 brew install node
@@ -34,8 +28,11 @@ Once the dependencies outlined above are installed, you can run:
 # clone the application source code
 git clone https://github.com/YaleDHLab/intertext
 
+# install the Python dependencies
+cd intertext && pip install -r intertext/requirements.txt --user
+
 # install the node dependencies
-cd intertext && npm install
+npm install --no-optional
 
 # detect text reuse in the included sample documents
 npm run detect-reuse
