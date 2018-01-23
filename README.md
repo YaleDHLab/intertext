@@ -28,13 +28,13 @@ Once the dependencies outlined above are installed, you can run:
 # clone the application source code
 git clone https://github.com/YaleDHLab/intertext
 
-# install the Python dependencies - requires Python 3.x
+# install the Python dependencies
 cd intertext && pip install -r intertext/requirements.txt --user
 
 # install the node dependencies
 npm install --no-optional
 
-# detect reuse in the included sample documents - requires Python 3.x
+# detect reuse in the included sample documents
 npm run detect-reuse
 
 # start the web server
