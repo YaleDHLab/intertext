@@ -1,5 +1,5 @@
 import React from 'react';
-import PropTypes from 'PropTypes';
+import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 
 class ResultCount extends React.Component {

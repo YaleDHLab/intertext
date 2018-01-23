@@ -1,5 +1,5 @@
 import React from 'react';
-import PropTypes from 'PropTypes';
+import PropTypes from 'prop-types';
 import ReactDOM from 'react-dom';
 import ChartLib from './chart-lib';
 
@@ -70,7 +70,7 @@ Chart.PropTypes = {
   onClick: PropTypes.func,
   waffleData: PropTypes.arrayOf(PropTypes.shape({
     _id: PropTypes.string,
-    column: PropsTypes.number.isRequired,
+    column: PropTypes.number.isRequired,
     row: PropTypes.number.isRequired,
     similarity: PropTypes.number.isRequired,
     xLevel: PropTypes.string.isRequired,

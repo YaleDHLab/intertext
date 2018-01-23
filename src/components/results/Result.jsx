@@ -157,10 +157,14 @@ const getHref = (result, type) => {
 }
 
 Result.propTypes = {
-  compare: PropTypes.func.isRequired,
+  compare: PropTypes.shape({
+    file_id: PropTypes.string,
+    segment_ids: PropTypes.string,
+    type: PropTypes.string,
+  }),
   favorites: PropTypes.shape({
-    source: PropTypes.arrayOf(PropTypes.number),
-    target: PropTypes.arrayOf(PropTypes.number),
+    source: PropTypes.arrayOf(PropTypes.string),
+    target: PropTypes.arrayOf(PropTypes.string),
   }),
   height: PropTypes.number.isRequired,
   result: PropTypes.shape({

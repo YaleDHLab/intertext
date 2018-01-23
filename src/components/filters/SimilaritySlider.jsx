@@ -1,5 +1,5 @@
 import React from 'react';
-import PropTypes from 'PropTypes';
+import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import Tooltip from 'rc-tooltip';
 import Slider from 'rc-slider';
