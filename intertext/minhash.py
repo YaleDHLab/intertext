@@ -468,7 +468,7 @@ def get_metadata():
 ##
 
 def get_config():
-  defaults = {'cache': 'redis'}
+  defaults = {'load_hashbands': False}
   with open('config.json') as f:
     config = json.load(f)
   for k in defaults:
@@ -481,7 +481,7 @@ def get_config():
 ##
 
 def main():
-  count_hashbands()
+  if not config['load_hashbands']: count_hashbands()
   match_minhash_keys()
   validate_all_matches()
   cluster_all_matches()
