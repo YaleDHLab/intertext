@@ -44,6 +44,8 @@
   display: none;
   text-align: left;
   font-size: .8em;
+  max-height: 164px;
+  overflow: auto;
 }
 
 input:focus + .typeahead-results {
