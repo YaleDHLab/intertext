@@ -1,4 +1,5 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import { colors } from './charts/colors';
 import Chart from './charts/Chart';
@@ -58,6 +59,7 @@ class Scatterplot extends React.Component {
                 pointStroke={(d) => '#fff'}
                 pointFill={(d) => colorScale(d.similarity)}
                 pointLabels={true}
+                pointKey={(d) => d.key}
                 jitter={this.props.jitter}
                 r={8}
                 x={'similarity'}
@@ -181,6 +183,48 @@ const handleMouseover = (setTooltip, yearField, d) => {
 
 const handleMouseout = (setTooltip, d) => {
   setTooltip({x: null, y: null, title: null, author: null, year: null})
+}
+
+const pointKey = (d) => Array.isArray(d.key) ? d.key.join('.') : d.key;
+
+Scatterplot.PropTypes = {
+  data: PropTypes.arrayOf(PropTypes.shape({
+    author: PropTypes.string.isRequired,
+    key: PropTypes.string.isRequired,
+    label: PropTypes.number,
+    match: PropTypes.string.isRequired,
+    similarity: PropTypes.number.isRequired,
+    source_year: PropTypes.number.isRequired,
+    target_year: PropTypes.number.isRequired,
+    title: PropTypes.string.isRequired,
+  })),
+  fetchScatterplotResults: PropTypes.func.isRequired,
+  fullXDomain: PropTypes.arrayOf(PropTypes.number).isRequired,
+  fullYDomain: PropTypes.arrayOf(PropTypes.number).isRequired,
+  history: PropTypes.shape({
+    push: PropTypes.func.isRequired,
+  }),
+  jitter: PropTypes.bool.isRequired,
+  location: PropTypes.object,
+  match: PropTypes.object,
+  resetZoom: PropTypes.func.isRequired,
+  setStatistic: PropTypes.func.isRequired,
+  setTooltip: PropTypes.func.isRequired,
+  setUnit: PropTypes.func.isRequired,
+  setY: PropTypes.func.isRequired,
+  shownXDomain: PropTypes.arrayOf(PropTypes.number).isRequired,
+  shownYDomain: PropTypes.arrayOf(PropTypes.number).isRequired,
+  statistic: PropTypes.string.isRequired,
+  toggleJitter: PropTypes.func.isRequired,
+  tooltip: PropTypes.shape({
+    name: PropTypes.string,
+    title: PropTypes.string,
+    x: PropTypes.number,
+    y: PropTypes.number,
+  }),
+  unit: PropTypes.string.isRequired,
+  use: PropTypes.string.isRequired,
+  y: PropTypes.string.isRequired,
 }
 
 const mapStateToProps = state => ({

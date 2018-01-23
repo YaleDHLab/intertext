@@ -43,9 +43,9 @@ class Navicon extends React.Component {
 }
 
 Navicon.propTypes = {
+  close: PropTypes.func.isRequired,
   display: PropTypes.string.isRequired,
   open: PropTypes.func.isRequired,
-  close: PropTypes.func.isRequired
 }
 
 const mapStateToProps = state => ({

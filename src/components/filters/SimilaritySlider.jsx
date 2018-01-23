@@ -1,7 +1,8 @@
 import React from 'react';
+import PropTypes from 'PropTypes';
+import { connect } from 'react-redux';
 import Tooltip from 'rc-tooltip';
 import Slider from 'rc-slider';
-import { connect } from 'react-redux';
 import {
   setSimilarityAndSearch,
   setDisplayed
@@ -40,6 +41,13 @@ class SimilaritySlider extends React.Component {
       </div>
     )
   }
+}
+
+SimilaritySlider.propTypes = {
+  displayed: PropTypes.arrayOf(PropTypes.number).isRequired,
+  setDisplayed: PropTypes.func.isRequired,
+  setSimilarityAndSearch: PropTypes.func.isRequired,
+  similarity: PropTypes.arrayOf(PropTypes.number).isRequired,
 }
 
 const mapStateToProps = state => ({

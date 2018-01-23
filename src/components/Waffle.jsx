@@ -1,8 +1,8 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { connect } from 'react-redux';
 import Chart from './charts/Chart';
 import Legend from './charts/Legend';
-import { connect } from 'react-redux';
 import Loader from './Loader';
 import Result from './results/Result';
 import headshot from '../assets/images/authors/default-headshot.jpg';
@@ -134,12 +134,56 @@ const options = [
 ];
 
 Waffle.propTypes = {
+  active: PropTypes.shape({
+    _id: PropTypes.string,
+    similarity: PropTypes.number.isRequired,
+    source_author: PropTypes.string.isRequired,
+    source_file_id: PropTypes.number.isRequired,
+    source_filename: PropTypes.string.isRequired,
+    source_match: PropTypes.string.isRequired,
+    source_postmatch: PropTypes.string.isRequired,
+    source_prematch: PropTypes.string.isRequired,
+    source_segment_ids: PropTypes.arrayOf(PropTypes.number.isRequired),
+    source_title: PropTypes.string.isRequired,
+    source_url: PropTypes.string,
+    source_year: PropTypes.string.isRequired,
+    target_author: PropTypes.string.isRequired,
+    target_file_id: PropTypes.number.isRequired,
+    target_file_path: PropTypes.string.isRequired,
+    target_filename: PropTypes.string.isRequired,
+    target_match: PropTypes.string.isRequired,
+    target_postmatch: PropTypes.string.isRequired,
+    target_prematch: PropTypes.string.isRequired,
+    target_segment_ids: PropTypes.arrayOf(PropTypes.number.isRequired),
+    target_title: PropTypes.string.isRequired,
+    target_url: PropTypes.string,
+    target_year: PropTypes.string.isRequired,
+  }),
+  author: PropTypes.string.isRequired,
   closeWaffle: PropTypes.func.isRequired,
-  setFeature: PropTypes.func.isRequired,
+  columnCounts: PropTypes.object.isRequired,
+  data: PropTypes.arrayOf(PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    column: PropTypes.number.isRequired,
+    row: PropTypes.number.isRequired,
+    similarity: PropTypes.number.isRequired,
+    xLevel: PropTypes.string.isRequired,
+  })).isRequired,
   feature: PropTypes.string.isRequired,
+  getActive: PropTypes.func.isRequired,
   history: PropTypes.shape({
     push: PropTypes.func.isRequired,
-  }).isRequired,
+  }),
+  image: PropTypes.string,
+  levelMargin: PropTypes.number,
+  location: PropTypes.object,
+  match: PropTypes.object,
+  maxColumn: PropTypes.number,
+  setFeature: PropTypes.func.isRequired,
+  title: PropTypes.string.isRequired,
+  type: PropTypes.string.isRequired,
+  width: PropTypes.number.isRequired,
+  xDomain: PropTypes.arrayOf(PropTypes.string).isRequired,
 }
 
 const mapStateToProps = state => ({

@@ -68,8 +68,37 @@ export const getResultHeights = (results) => {
 }
 
 Results.propTypes = {
-  results: PropTypes.array,
+  history: PropTypes.shape({
+    push: PropTypes.func.isRequired,
+  }),
   loadSearchFromUrl: PropTypes.func.isRequired,
+  location: PropTypes.object,
+  match: PropTypes.object,
+  results: PropTypes.arrayOf(PropTypes.shape({
+    _id: PropTypes.string,
+    similarity: PropTypes.number.isRequired,
+    source_author: PropTypes.string.isRequired,
+    source_file_id: PropTypes.number.isRequired,
+    source_filename: PropTypes.string.isRequired,
+    source_match: PropTypes.string.isRequired,
+    source_postmatch: PropTypes.string.isRequired,
+    source_prematch: PropTypes.string.isRequired,
+    source_segment_ids: PropTypes.arrayOf(PropTypes.number.isRequired),
+    source_title: PropTypes.string.isRequired,
+    source_url: PropTypes.string,
+    source_year: PropTypes.string.isRequired,
+    target_author: PropTypes.string.isRequired,
+    target_file_id: PropTypes.number.isRequired,
+    target_file_path: PropTypes.string.isRequired,
+    target_filename: PropTypes.string.isRequired,
+    target_match: PropTypes.string.isRequired,
+    target_postmatch: PropTypes.string.isRequired,
+    target_prematch: PropTypes.string.isRequired,
+    target_segment_ids: PropTypes.arrayOf(PropTypes.number.isRequired),
+    target_title: PropTypes.string.isRequired,
+    target_url: PropTypes.string,
+    target_year: PropTypes.string.isRequired,
+  }))
 }
 
 const mapStateToProps = state => ({

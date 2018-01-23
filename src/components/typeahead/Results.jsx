@@ -5,13 +5,6 @@ import { connect } from 'react-redux';
 import { fetchSearchResults } from '../../actions/search';
 import { setTypeaheadQuery } from '../../actions/typeahead';
 
-const Result = (props) => (
-  <span onClick={props.onClick}
-    className={props.active ?
-      'typeahead-result active'
-    : 'typeahead-result'}>{props.val}</span>
-)
-
 class Results extends React.Component {
   constructor(props) {
     super(props)
@@ -67,16 +60,32 @@ class Results extends React.Component {
 }
 
 Results.propTypes = {
-  results: PropTypes.array.isRequired,
-  query: PropTypes.string.isRequired,
+  fetchSearchResults: PropTypes.func.isRequired,
   index: PropTypes.number.isRequired,
-  submitSearch: PropTypes.func.isRequired
+  query: PropTypes.string.isRequired,
+  results: PropTypes.array.isRequired,
+  setTypeaheadQuery: PropTypes.func.isRequired,
+  submitSearch: PropTypes.func.isRequired,
+}
+
+const Result = (props) => (
+  <span onClick={props.onClick}
+    className={props.active ?
+      'typeahead-result active'
+    : 'typeahead-result'}>{props.val}</span>
+)
+
+Result.propTypes = {
+  active: PropTypes.bool,
+  onClick: PropTypes.func.isRequired,
+  submitSearch: PropTypes.func.isRequired,
+  val: PropTypes.string.isRequired,
 }
 
 const mapStateToProps = state => ({
   results: state.typeahead.results,
   query: state.typeahead.query,
-  index: state.typeahead.index
+  index: state.typeahead.index,
 })
 
 const mapDispatchToProps = dispatch => ({
