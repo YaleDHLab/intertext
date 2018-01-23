@@ -142,7 +142,7 @@ const parseResults = (docs, _state, dispatch) => {
     // pluck attributes from the first observation from this level
     const o = dataNest[k][0];
     data.push({
-      key: o[level],
+      key: Array.isArray(o[level]) ? o[level].join('.') : o[level],
       similarity: simByLevel[k],
       title: o[use + '_title'],
       author: o[use + '_author'],

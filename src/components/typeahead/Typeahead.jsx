@@ -4,7 +4,6 @@ import Results from './Results';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import config from '../../../server/config';
-import { withRouter } from 'react-router-dom';
 import { fetchSearchResults } from '../../actions/search';
 import {
   setTypeaheadQuery,
@@ -88,16 +87,14 @@ const buildTypeaheadQuery = (props) => {
 }
 
 Typeahead.propTypes = {
-  query: PropTypes.string.isRequired,
+  fetchSearchResults: PropTypes.func.isRequired,
+  fetchTypeaheadResults: PropTypes.func.isRequired,
   field: PropTypes.string.isRequired,
   index: PropTypes.number.isRequired,
-  results: PropTypes.array.isRequired,
-  setTypeaheadQuery: PropTypes.func.isRequired,
+  query: PropTypes.string.isRequired,
+  results: PropTypes.arrayOf(PropTypes.string),
   setTypeaheadIndex: PropTypes.func.isRequired,
-  fetchSearchResults: PropTypes.func.isRequired,
-  history: PropTypes.shape({
-    push: PropTypes.func.isRequired,
-  }).isRequired,
+  setTypeaheadQuery: PropTypes.func.isRequired,
 }
 
 const mapStateToProps = state => ({
@@ -115,4 +112,4 @@ const mapDispatchToProps = dispatch => ({
   fetchSearchResults: () => dispatch(fetchSearchResults())
 })
 
-export default withRouter( connect(mapStateToProps, mapDispatchToProps)(Typeahead) )
+export default connect(mapStateToProps, mapDispatchToProps)(Typeahead)

@@ -6,7 +6,7 @@
 }
 
 .waffle-card-container {
-  padding: 50px;
+  padding: 50px 50px 0;
   background: #F8F8F8;
   box-sizing: border-box;
   width: 1180px;
@@ -109,7 +109,7 @@ span.label {
   width: 90px;
   display: inline-block;
   border-radius: 100%;
-  border: 3px solid #6DD1D1;
+  border: 3px solid #5bb3b3;
   margin-top: 50px;
 }
 

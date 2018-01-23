@@ -44,8 +44,8 @@ Button.propTypes = {
 }
 
 UseTypes.propTypes = {
-  useTypes: PropTypes.object.isRequired,
   toggleUseTypes: PropTypes.func.isRequired,
+  useTypes: PropTypes.object.isRequired,
 }
 
 const mapStateToProps = state => ({

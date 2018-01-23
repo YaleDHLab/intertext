@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import division, print_function
 from multiprocessing import Pool
 from collections import defaultdict
 from datasketch import MinHash
@@ -35,13 +35,13 @@ def count_file_hashbands(text_id):
 def rm_dirs(path):
   try:
     rmtree('tmp')
-  except FileNotFoundError:
+  except:
     pass
 
 def make_dirs(path):
   try:
     os.makedirs(path)
-  except FileExistsError:
+  except:
     pass
 
 def get_windows(text_path):
