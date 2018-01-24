@@ -19,7 +19,7 @@ ResultCount.PropTypes = {
 }
 
 const mapStateToProps = state => ({
-  totalResults: state.search.totalResults
+  totalResults: state.search.allResults ? state.search.allResults.length : 0
 })
 
 export default connect(mapStateToProps)(ResultCount)
