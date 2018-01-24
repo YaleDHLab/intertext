@@ -19,8 +19,18 @@ export const searchRequestFailed = () => ({
   type: 'SEARCH_REQUEST_FAILED'
 })
 
+export const displayMoreResults = () => ({
+  type: 'DISPLAY_MORE_RESULTS',
+})
+
+export const resetMaxDisplayed = () => ({
+  type: 'RESET_MAX_DISPLAYED',
+})
+
 export const fetchSearchResults = () => {
   return (dispatch, getState) => {
+    // Reset the max number of displayed results
+    dispatch(resetMaxDisplayed())
     // Save the user's search in the url
     dispatch(saveSearchInUrl())
     // Reset the typeahead index given new results
@@ -67,7 +77,7 @@ export const getSearchUrl = (state) => {
     url += '&' + state.compare.type + '_file_id=' + state.compare.file_id;
     url += '&' + state.compare.type + '_segment_ids=' + state.compare.segment_ids;
   }
-  url += 'limit=1000';
+  url += '&limit=1000';
   return url;
 }
 

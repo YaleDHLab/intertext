@@ -4,7 +4,10 @@ import { connect } from 'react-redux';
 import Filters from '../filters/Filters';
 import Result from './Result';
 import Loader from '../Loader';
-import { loadSearchFromUrl } from '../../actions/search';
+import {
+  loadSearchFromUrl,
+  displayMoreResults
+} from '../../actions/search';
 
 class Results extends React.Component {
   constructor(props) {
@@ -12,9 +15,17 @@ class Results extends React.Component {
     this.renderContent = this.renderContent.bind(this)
   }
 
+  componentWillMount() {
+    window.addEventListener('scroll', () => onScroll(this.props))
+  }
+
   // bootstrap search state in url (if any) when app mounts
   componentDidMount() {
     this.props.loadSearchFromUrl(window.location.search)
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('scroll', () => onScroll(this.props))
   }
 
   renderContent() {
@@ -67,6 +78,13 @@ export const getResultHeights = (results) => {
   return heights;
 }
 
+const onScroll = (props) => {
+  const elem = document.querySelector('.result-pair-container');
+  if (elem && window.scrollY/elem.clientHeight > .75) {
+    props.displayMoreResults()
+  }
+}
+
 Results.propTypes = {
   history: PropTypes.shape({
     push: PropTypes.func.isRequired,
@@ -106,7 +124,8 @@ const mapStateToProps = state => ({
 })
 
 const mapDispatchToProps = dispatch => ({
-  loadSearchFromUrl: (obj) => dispatch(loadSearchFromUrl(obj))
+  loadSearchFromUrl: (obj) => dispatch(loadSearchFromUrl(obj)),
+  displayMoreResults: () => dispatch(displayMoreResults()),
 })
 
 export default connect(mapStateToProps, mapDispatchToProps)(Results)
