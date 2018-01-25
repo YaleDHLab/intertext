@@ -194,7 +194,7 @@ source activate 3.5
 # obtain app source and install Python dependencies
 git clone https://github.com/YaleDHLab/intertext
 cd intertext
-pip install -r intertext/requirements.txt --user
+pip install -r requirements.txt --user
 
 ##
 # Intertext
