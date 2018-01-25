@@ -29,7 +29,7 @@ Once the dependencies outlined above are installed, you can run:
 git clone https://github.com/YaleDHLab/intertext
 
 # install the Python dependencies
-cd intertext && pip install -r intertext/requirements.txt --user
+cd intertext && pip install -r requirements.txt --user
 
 # install the node dependencies
 npm install --no-optional
