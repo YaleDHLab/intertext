@@ -1,13 +1,10 @@
 const initialState = {
   unit: 'passage', // 'passage', 'author', or 'book'
   data: [], // the filtered data shown in view
-  allData: [], // all data to be shown in view
   use: 'earlier', // 'earlier' or 'later'
   statistic: 'mean', // 'sum' or 'mean'
-  shownXDomain: [], // displayed x domain
-  shownYDomain: [], // displayed y domain
-  fullXDomain: [], // full, unzoomed x domain
-  fullYDomain: [], // full, unzoomed y domain
+  xDomain: [], // list of min, max similarity floats
+  yDomain: [], // list of min, max year ints
   y: 'target_year', // attribute displayed on y axis
   zoomed: false,
   jitter: false,
@@ -48,28 +45,17 @@ const scatterplotReducer = (state = initialState, action) => {
         jitter: !state.jitter,
       })
 
-    case 'SET_FULL_X_DOMAIN':
+    case 'SET_DISPLAYED_DOMAINS':
       return Object.assign({}, state, {
-        fullXDomain: action.arr, 
-      })
-
-    case 'SET_FULL_Y_DOMAIN':
-      return Object.assign({}, state, {
-        fullYDomain: action.arr,
-      })
-
-    case 'SET_SHOWN_X_DOMAIN':
-      return Object.assign({}, state, {
-        shownXDomain: action.arr,
-      })
-
-    case 'SET_SHOWN_Y_DOMAIN':
-      return Object.assign({}, state, {
-        shownYDomain: action.arr,
+        xDomain: action.obj.x,
+        yDomain: action.obj.y,
+        zoomed: true,
       })
 
     case 'REMOVE_ZOOM':
       return Object.assign({}, state, {
+        xDomain: [],
+        yDomain: [],
         zoomed: false,
       })
 
@@ -80,8 +66,11 @@ const scatterplotReducer = (state = initialState, action) => {
 
     case 'RECEIVE_SCATTERPLOT_RESULTS':
       return Object.assign({}, state, {
-        data: action.results,
-        allData: action.results,
+        data: action.obj.data,
+        xDomain: action.obj.xDomain,
+        yDomain: action.obj.yDomain,
+        zoomed: action.obj.zoomed,
+        statistic: action.obj.statistic || state.statistic,
       })
 
     default:

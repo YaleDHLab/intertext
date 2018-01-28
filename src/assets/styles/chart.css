@@ -100,7 +100,7 @@ circle.point {
 .viewport {
   stroke: none;
   stroke-width: 1px;
-  fill: black;
+  fill: #fff;
   fill-opacity: 0.2;
 }
 

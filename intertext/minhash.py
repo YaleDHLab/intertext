@@ -447,6 +447,54 @@ def create_metadata_collection():
   db.metadata.insert(vals)
 
 ##
+# Prepare scatterplot collection
+##
+
+def create_scatterplot_collection():
+  '''
+  Precompute the mean and summed similarity values for each level
+  of all factors used in the scatterplot visualization, including
+  segment, title, and author values (with similarity values computed
+  for those levels occuring before and after other levels)
+  '''
+
+  # create store for scatterplot data
+  scatterplot_data = []
+
+  for i in ['source', 'target']:
+    for j in ['segment_ids', 'file_id', 'author']:
+      for k in ['sum', 'mean']:
+        data_nest = defaultdict(list)
+        for l in list( db.matches.find({}) ):
+          if j == 'segment_ids':
+            level = i + '.' + str(l[i + '_file_id']) + '.'
+            level += '.'.join( [str(m) for m in l[i + '_segment_ids']] )
+          else:
+            level = l[i + '_' + j]
+          # ensure the level (aka data key) is a string
+          if isinstance(level, list): level = '.'.join([str(i) for i in level])
+          data_nest[level].append(l)
+
+        for level in data_nest:
+          sims = [o['similarity'] for o in data_nest[level]]
+          sim = sum(sims) if k == 'sum' else sum(sims) / len(sims)
+          o = data_nest[level][0]
+          scatterplot_data.append({
+            'type': i,
+            'unit': j,
+            'statistic': k,
+            'key': level,
+            'similarity': sim,
+            'title': o[i + '_title'],
+            'author': o[i + '_author'],
+            'match': o[i + '_match'],
+            'source_year': o['source_year'],
+            'target_year': o['target_year'],
+          })
+
+  db.scatterplot.insert_many(scatterplot_data)
+
+##
 # Metadata Helpers
 ##
 
@@ -488,6 +536,7 @@ def main():
   create_typeahead_collection()
   create_config_collection()
   create_metadata_collection()
+  create_scatterplot_collection()
 
 if __name__ == '__main__':
 

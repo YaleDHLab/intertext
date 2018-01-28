@@ -68,29 +68,19 @@ module.exports = (app) => {
       'target_segment_id',
     ]
 
-    _.keys(req.query).map((f) => {
-      if (_.includes(keyValueInts, f)) query[f] = parseInt(req.query[f])
+    keyValueInts.map((f) => {
+      if (req.query[f]) query[f] = parseInt(req.query[f])
     })
 
     // Fields that specify a list of args, only one needs to be present for a hit
-    var inFields = {
-      'source_segment_ids': 'source_segment_ids',
-      'target_segment_ids': 'target_Segment_ids'
-    }
+    var inFields = ['source_segment_ids', 'target_segment_ids'];
 
-    _.keys(req.query).map((f) => {
-      if (_.keys(inFields).indexOf(f) > -1) {
-        // case where there are multiple values for the field
-        if (Array.isArray(req.query[f])) {
-          var arr = [];
-          req.query[f].map((val) => {
-            arr.push(parseInt(val))
-          });
-          query[f] = {$in: arr}
-
-        // case where there's one value for the field
+    inFields.map((f) => {
+      if (req.query[f]) {
+        if (Array.isArray(f)) {
+          query[f] = {$in: req.query[f].map(Number)}
         } else {
-          query[f] = {$in: [parseInt(req.query[f])]}
+          query[f] = {$in: [ parseInt(req.query[f]) ]}
         }
       }
     })
@@ -114,9 +104,8 @@ module.exports = (app) => {
     }
 
     // Limit and offset
-    ['limit', 'offset'].map((p) => {
-      if (req.query[p]) pagination[p] = parseInt(req.query[p]);
-    })
+    if (req.query.limit) pagination.limit = parseInt(req.query.limit)
+    if (req.query.offset) pagination.offset = parseInt(req.query.offset)
 
     // Select based search to limit response fields
     if (req.query.select) {
@@ -135,6 +124,54 @@ module.exports = (app) => {
 
     // Send paginated results to application queries
     models.match.paginate(query, pagination, (err, data) => {
+      if (err) {console.warn(err)};
+      res.json(data);
+    })
+  })
+
+  /**
+  * Scatterplot request routes
+  **/
+
+  app.get('/api/scatterplot', (req, res, next) => {
+    var query = {};
+    var pagination = {limit: 100, offset: 0, sort: {'similarity': -1}};
+
+    if (req.query.limit) pagination.limit = parseInt(req.query.limit);
+    if (req.query.type) query.type = req.query.type;
+    if (req.query.unit) query.unit = req.query.unit;
+    if (req.query.statistic) query.statistic = req.query.statistic;
+
+    // handle greater than && less than similarity queries
+    if (req.query.min_similarity || req.query.max_similarity) query.similarity = {};
+    if (req.query.min_similarity) {
+      query.similarity['$gte'] = parseFloat(req.query.min_similarity)
+    }
+    if (req.query.max_similarity) {
+      query.similarity['$lte'] = parseFloat(req.query.max_similarity)
+    }
+
+    // handle greater than && less than year queries
+    if (req.query.min_source_year || req.query.max_source_year) {
+      query.source_year = {};
+    }
+    if (req.query.min_target_year || req.query.max_target_year) {
+      query.target_year = {};
+    }
+    if (req.query.min_source_year) {
+      query.source_year['$gte'] = parseInt(req.query.min_source_year)
+    }
+    if (req.query.max_source_year) {
+      query.source_year['$lte'] = parseInt(req.query.max_source_year)
+    }
+    if (req.query.min_target_year) {
+      query.target_year['$gte'] = parseInt(req.query.min_target_year)
+    }
+    if (req.query.max_target_year) {
+      query.target_year['$lte'] = parseInt(req.query.max_target_year)
+    }
+
+    models.scatterplot.paginate(query, pagination, (err, data) => {
       if (err) {console.warn(err)};
       res.json(data);
     })

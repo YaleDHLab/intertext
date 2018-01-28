@@ -6,23 +6,48 @@ import ChartLib from './chart-lib';
 export default class Chart extends React.Component {
   constructor(props) {
     super(props)
-    this.state = {viewportElem: null}
+    this.state = {brush: null}
+    this.create = this.create.bind(this)
+    this.update = this.update.bind(this)
+    this.destroy = this.destroy.bind(this)
   }
 
   componentDidMount() {
     const el = ReactDOM.findDOMNode(this);
-    const viewportElem = create(el, this.props);
-    this.setState({viewportElem: viewportElem})
+    this.create(el, this.props);
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps) {
     const el = ReactDOM.findDOMNode(this);
-    update(el, this.props, this.state.viewportElem);
+    this.update(el, this.props, this.state.brushElem);
   }
 
   componentWillUnmount() {
-    destroy(ReactDOM.findDOMNode(this));
+    this.destroy(ReactDOM.findDOMNode(this));
   }
+
+  create(elem, props) {
+    const brushElem = ChartLib.createBase(elem, props)
+    this.update(elem, props, brushElem)
+    this.setState({brushElem: brushElem});
+  }
+
+  update(elem, props, brushElem) {
+    let brush, domain, scales;
+    ChartLib.updateBase(elem, props)
+    ChartLib.getGeoms(props).map((geom) => {
+      domain = ChartLib.getDomain(geom.data, props)
+      scales = ChartLib.getScales(elem, props, domain)
+      geom.draw(elem, props, domain, scales)
+    })
+    if (props.onBrush && props.setBrush) {
+      brush = props.setBrush(brushElem, scales)
+    }
+    ChartLib.updateAxes(elem, props, scales, brush, brushElem)
+    if (props.legend) ChartLib.updateLegend(elem, props)
+  }
+
+  destroy() {}
 
   render() {
     return (
@@ -30,30 +55,6 @@ export default class Chart extends React.Component {
     );
   }
 }
-
-const create = (elem, props) => {
-  const viewportElem = ChartLib.createBase(elem, props);
-  update(elem, props, viewportElem);
-  return viewportElem;
-}
-
-const update = (elem, props, viewportElem) => {
-  let viewport, chart = {};
-  ChartLib.updateBase(elem, props, viewportElem);
-  ChartLib.getGeoms(props).map((geom) => {
-    chart.domain = ChartLib.getDomain(geom.data, props);
-    chart.scales = ChartLib.getScales(elem, props, chart.domain);
-    geom.draw(elem, props, chart.domain, chart.scales)
-  })
-  if (props.onBrush) {
-    const updateViewport = props.viewport ? props.viewport : ChartLib.viewport;
-    viewport = updateViewport(elem, props, chart.domain, chart.scales);
-  }
-  ChartLib.updateAxes(elem, props, chart.scales, viewport, viewportElem);
-  if (props.legend) ChartLib.updateLegend(elem, props);
-}
-
-const destroy = () => {}
 
 Chart.PropTypes = {
   color: PropTypes.func,
@@ -67,7 +68,12 @@ Chart.PropTypes = {
     top: PropTypes.number.isRequired,
   }).isRequired,
   maxColumns: PropTypes.number,
+  onBrush: PropTypes.func,
   onClick: PropTypes.func,
+  onMouseenter: PropTypes.func,
+  onMouseout: PropTypes.func,
+  onMouseover: PropTypes.func,
+  setBrush: PropTypes.func,
   waffleData: PropTypes.arrayOf(PropTypes.shape({
     _id: PropTypes.string,
     column: PropTypes.number.isRequired,
