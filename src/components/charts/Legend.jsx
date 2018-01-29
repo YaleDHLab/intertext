@@ -4,7 +4,7 @@ import { colors } from './colors';
 const Legend = (props) => {
   const min = props.domain && props.domain[0] ? props.domain[0] : 0.5;
   const max = props.domain && props.domain[1] ? props.domain[1] : 1.0;
-  const percents = typeof(props.percents) === undefined ? true : props.percents;
+  const percents = 'percents' in props ? props.percents : true;
   return (
     <div className='chart-legend'>
       <span>{parse(min, percents)}</span>
