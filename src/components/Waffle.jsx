@@ -167,7 +167,7 @@ Waffle.propTypes = {
     column: PropTypes.number.isRequired,
     row: PropTypes.number.isRequired,
     similarity: PropTypes.number.isRequired,
-    xLevel: PropTypes.string.isRequired,
+    xLevel: PropTypes.isRequired,
   })).isRequired,
   feature: PropTypes.string.isRequired,
   getActive: PropTypes.func.isRequired,

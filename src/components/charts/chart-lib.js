@@ -15,7 +15,7 @@ const curateProps = (_props) => {
 **/
 
 ChartLib.createBase = (elem, props) => {
-  let viewportElem = null;
+  let brushElem = null;
   const svg = d3.select(elem).append('svg');
 
   if (props.xLabel) svg.append('text').attr('class', 'x label')
@@ -31,11 +31,12 @@ ChartLib.createBase = (elem, props) => {
     g.append('g').attr('class', 'y grid');
   }
 
-  // Brush viewport
-  if (props.onBrush) {
-    viewportElem = g.append('g').attr('class', 'viewport');
-    viewportElem.append('rect');
-  }
+  // Axes
+  g.append('g').attr('class', 'x axis')
+  g.append('g').attr('class', 'y axis')
+
+  // Brush
+  if (props.onBrush) brushElem = g.append('g').attr('class', 'brush')
 
   // Specific geom containers
   if (props.areaData) g.append('g').attr('class', 'area-container')
@@ -50,18 +51,14 @@ ChartLib.createBase = (elem, props) => {
   // Legends
   if (props.legend) g.append('g').attr('class', 'legend-container')
 
-  // Axes
-  g.append('g').attr('class', 'x axis')
-  g.append('g').attr('class', 'y axis')
-
-  return viewportElem;
+  return brushElem;
 };
 
 /**
 * Update chart base with data
 **/
 
-ChartLib.updateBase = (elem, _props, viewportElem) => {
+ChartLib.updateBase = (elem, _props) => {
   const props = curateProps(_props)
   const svg = d3.select(elem).select('svg')
   svg.transition().duration(1000)
@@ -69,7 +66,6 @@ ChartLib.updateBase = (elem, _props, viewportElem) => {
   transformGroupContainer(svg, props)
   transformXAxis(svg, props)
   if (props.drawGrid) addGrid(props)
-  if (viewportElem) addViewport(viewportElem, props)
   if (props.xLabel) addXLabel(svg, props)
   if (props.yLabel) addYLabel(svg, props)
 }
@@ -99,14 +95,6 @@ const addGrid = (props) => {
     .attr('class', 'grid')
     .attr('width', props.width - props.margin.left - props.margin.right)
     .attr('height', props.height - props.margin.top - props.margin.bottom);
-}
-
-const addViewport = (viewportElem, props) => {
-  viewportElem.select('.viewport rect')
-    .attr('height', props.height - props.margin.top - props.margin.bottom)
-    .attr('width', props.width - props.margin.left - props.margin.right)
-    .attr('fill', 'none')
-    .attr('stroke','grey')
 }
 
 const addXLabel = (svg, props) => {
@@ -214,7 +202,7 @@ ChartLib.getScales = (elem, _props, domain) => {
 * Add axes
 **/
 
-ChartLib.updateAxes = (elem, props, scales, viewport, viewportElem) => {
+ChartLib.updateAxes = (elem, props, scales, brush, brushElem) => {
   if (!scales) return;
   if (props.drawGrid == true) ChartLib.drawGrid(elem, props, scales)
   const axes = ChartLib.getAxes(props, scales)
@@ -235,10 +223,11 @@ ChartLib.updateAxes = (elem, props, scales, viewport, viewportElem) => {
     .duration(1000)
     .call(axes.y);
 
-  if (props.onBrush && viewport && viewportElem) {
-    viewportElem.call(viewport)
-      .selectAll('rect')
-      .attr('height', props.height - props.margin.top - props.margin.bottom);
+  if (brush && brushElem) {
+    brushElem.call(brush)
+    brushElem.select('.overlay')
+      .attr('width', props.width - props.margin.left - props.margin.right)
+      .attr('height', props.height - props.margin.top - props.margin.bottom)
   }
 }
 
@@ -286,17 +275,24 @@ ChartLib.drawGrid = (elem, props, scales) => {
 * Draw geom: points
 **/
 
-ChartLib.drawPoint = (elem, props, domain, scales) => {
+ChartLib.drawPoint = (elem, props, domain, scales, jitters) => {
   const color = d3.scaleOrdinal('schemePaired');
   const xKey = props.x || 'x';
   const yKey = props.y || 'y';
   const j = props.jitter || false;
+  window.chartLib = window.chartLib || {};
+  window.chartLib.jitters = window.chartLib.jitters || {x: [], y: []};
+  if (!j) window.chartLib.jitters = {x: [], y: []};
 
   const dataKey = (d, i) => i;
-  const x = (d, i) => j ? jitter(scales.x(d[xKey]), i) : scales.x(d[xKey])
-  const y = (d, i) => j ? jitter(scales.y(d[yKey]), i) : scales.y(d[yKey])
-  const jitter = (val, idx) => idx % 2 === 0 ?
-      val + (idx % 10)/8 * 10 : val - (idx % 10)/8 * 10;
+  const x = (d, i) => j ? jitter(scales.x(d[xKey]), i, 'x') : scales.x(d[xKey])
+  const y = (d, i) => j ? jitter(scales.y(d[yKey]), i, 'y') : scales.y(d[yKey])
+  const jitter = (val, idx, dim) => {
+    if (!window.chartLib.jitters[dim][idx]) {
+      window.chartLib.jitters[dim][idx] = (Math.random() * 30) - 15;
+    }
+    return val + window.chartLib.jitters[dim][idx]
+  }
 
   // enter
   const g = d3.select(elem).select('.point-container');

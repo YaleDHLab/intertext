@@ -35,6 +35,19 @@ module.exports = {
     updated_at: Date,
   },
 
+  scatterplot: {
+    type: String,
+    unit: String,
+    statistic: String,
+    key: String,
+    similarity: Number,
+    title: String,
+    author: String,
+    match: String,
+    source_year: Number,
+    target_year: Number,
+  },
+
   typeahead: {
     field: String,
     type: String,
