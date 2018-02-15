@@ -333,8 +333,8 @@ def format_matches(file_id_a, file_id_b, clusters):
   b_file = os.path.basename(b_path)
   a_meta = metadata[a_file]
   b_meta = metadata[b_file]
-  a_words = open(a_path).read().split()
-  b_words = open(b_path).read().split()
+  a_words = get_text_content(open(a_path).read()).split()
+  b_words = get_text_content(open(b_path).read()).split()
   formatted = []
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'])
