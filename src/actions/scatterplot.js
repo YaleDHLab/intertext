@@ -120,7 +120,6 @@ const getDomains = (data, _state) => {
 }
 
 const parseResults = (data, options) => {
-  console.log(options)
   return (dispatch, getState) => {
     const domains = getDomains(data, getState().scatterplot);
     for (let i=0; i<20; i++) {

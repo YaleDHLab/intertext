@@ -333,8 +333,11 @@ def format_matches(file_id_a, file_id_b, clusters):
   b_file = os.path.basename(b_path)
   a_meta = metadata[a_file]
   b_meta = metadata[b_file]
-  a_words = open(a_path).read().split()
-  b_words = open(b_path).read().split()
+  if config['same_author_matches'] == False:
+    if get_value(a_meta, 'author') == get_value(b_meta, 'author'):
+      return
+  a_words = get_text_content(open(a_path).read()).split()
+  b_words = get_text_content(open(b_path).read()).split()
   formatted = []
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'])
@@ -516,7 +519,7 @@ def get_metadata():
 ##
 
 def get_config():
-  defaults = {'load_hashbands': False}
+  defaults = {'load_hashbands': False, 'same_author_matches': True}
   with open('config.json') as f:
     config = json.load(f)
   for k in defaults:
