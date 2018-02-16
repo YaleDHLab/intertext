@@ -15,7 +15,7 @@ import glob, json, sys, os
 
 def count_hashbands():
   print(' * counting hashbands')
-  rm_dirs('tmp')
+  rm_dirs(config['tmp'])
   pool = Pool(config['max_cores'])
   for c, _ in enumerate(pool.imap(count_file_hashbands, text_ids)):
     print(' * counted', c+1, 'of', len(infiles), 'hashbands')
@@ -27,14 +27,14 @@ def count_file_hashbands(text_id):
   for window_id, window in enumerate(get_windows(text_path)):
     for hashband in get_hashbands(window):
       a, b = hashband[0:2], hashband[2:4]
-      outdir = os.path.join('tmp', 'hashbands', a, b)
+      outdir = os.path.join(config['tmp'], 'hashbands', a, b)
       make_dirs(outdir)
       with open( os.path.join(outdir, a + b), 'a') as out:
         out.write(hashband + '-' + text_id + '.' + str(window_id) + '#')
 
 def rm_dirs(path):
   try:
-    rmtree('tmp')
+    rmtree(config['tmp'])
   except:
     pass
 
@@ -75,7 +75,7 @@ def get_text_content(s):
 ##
 
 def match_minhash_keys():
-  dirs = glob.glob(os.path.join('tmp', 'hashbands', '*',))
+  dirs = glob.glob(os.path.join(config['tmp'], 'hashbands', '*',))
   pool = Pool(config['max_cores'])
   for c, _ in enumerate(pool.imap(match_minhash_key, dirs)):
     c += 1
@@ -142,9 +142,9 @@ def save_matches(d):
   file and segment ids for each file id to disk
   '''
   for i in d:
-    outdir = os.path.join('tmp', 'matches')
+    outdir = os.path.join(config['tmp'], 'matches')
     make_dirs(outdir)
-    with open(os.path.join('tmp', 'matches', i), 'a') as out:
+    with open(os.path.join(config['tmp'], 'matches', i), 'a') as out:
       out.write('#'.join(d[i]) + '#')
 
 ##
@@ -153,7 +153,7 @@ def save_matches(d):
 
 def validate_all_matches():
   pool = Pool(config['max_cores'])
-  match_files = glob.glob(os.path.join('tmp', 'matches', '*'))
+  match_files = glob.glob(os.path.join(config['tmp'], 'matches', '*'))
   for c, _ in enumerate(pool.imap(validate_text_matches, match_files)):
     print(' * validated', c+1, 'of', len(match_files), 'file matches')
   pool.close()
@@ -207,7 +207,7 @@ def get_text_matches(match_file):
   return d
 
 def save_validated_matches(text_id, content):
-  out_dir = os.path.join('tmp', 'validated')
+  out_dir = os.path.join(config['tmp'], 'validated')
   make_dirs(out_dir)
   with open(os.path.join(out_dir, text_id), 'a') as out:
     out.write(content)
@@ -218,7 +218,7 @@ def save_validated_matches(text_id, content):
 
 def cluster_all_matches():
   pool = Pool(config['max_cores'])
-  validated_files = glob.glob(os.path.join('tmp', 'validated', '*'))
+  validated_files = glob.glob(os.path.join(config['tmp'], 'validated', '*'))
   for c, _ in enumerate(pool.imap(cluster_file_matches, validated_files)):
     print(' * clustered matches in', c+1, 'of', len(validated_files), 'files')
   pool.close()
@@ -519,7 +519,11 @@ def get_metadata():
 ##
 
 def get_config():
-  defaults = {'load_hashbands': False, 'same_author_matches': True}
+  defaults = {
+    'load_hashbands': False,
+    'same_author_matches': True,
+    'tmp': 'tmp'
+  }
   with open('config.json') as f:
     config = json.load(f)
   for k in defaults:
