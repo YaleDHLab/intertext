@@ -588,6 +588,13 @@ def get_metadata():
 def get_config():
   defaults = {
     'load_hashbands': False,
+    'xml_tag': False,
+    'max_cores': 8,
+    'step': 4,
+    'window_size': 14,
+    'n_permutations': 256,
+    'hashband_length': 4,
+    'min_similarity': 0.65,
     'same_author_matches': True,
     'mongo_host': 'localhost',
     'mongo_port': 27017,
