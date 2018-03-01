@@ -6,6 +6,7 @@ from itertools import cycle
 from functools import reduce
 from difflib import SequenceMatcher
 from pymongo import MongoClient
+from random import randint
 from shutil import rmtree
 from nltk import ngrams
 from bs4 import BeautifulSoup
@@ -21,7 +22,7 @@ def write_hashbands():
   worker_text_ids = get_worker_list(text_ids)
   args = [[i, c] for c, i in enumerate(worker_text_ids)]
   for c, _ in enumerate(pool.imap(write_file_hashbands, args)):
-    print(' * counted', c+1, 'of', len(infiles), 'hashbands')
+    print(' * wrote', c+1, 'of', len(infiles), 'hashbands')
   pool.close()
   pool.join()
 
@@ -392,7 +393,6 @@ def format_matches(file_id_a, file_id_b, clusters):
   with the sequence of b's values -- format the matches into the required
   structure and save in mongo.
   '''
-  db = get_db()
   text_id_to_path = get_text_id_to_path()
   a_path = text_id_to_path[ int(file_id_a) ]
   b_path = text_id_to_path[ int(file_id_b) ]
@@ -464,7 +464,7 @@ def format_matches(file_id_a, file_id_b, clusters):
         'source_url': get_value(b_meta, 'url'),
         'target_url': get_value(a_meta, 'url')
       })
-  db.matches.insert_many(formatted)
+  save('matches', formatted)
 
 def get_value(d, k):
   try:
@@ -492,20 +492,19 @@ def get_match_strings(words, segment_ids):
 ##
 
 def create_typeahead_collection():
-  db = get_db()
   vals = []
   for i in ['source', 'target']:
     for j in ['author', 'title']:
       for k in db.matches.distinct(i + '_' + j):
         vals.append({'type': i + '_' + j, 'field': j, 'value': k})
-  db.typeahead.insert_many(vals)
+  # save to mongo or disk
+  save('typeahead', vals)
 
 def create_config_collection():
-  db = get_db()
-  db.config.insert(config)
+  # save to mongo or disk
+  save('config', config)
 
 def create_metadata_collection():
-  db = get_db()
   vals = []
   for c, i in enumerate(infiles):
     vals.append({
@@ -514,7 +513,8 @@ def create_metadata_collection():
       'path': i,
       'metadata': metadata[ os.path.basename(i) ]
     })
-  db.metadata.insert(vals)
+  # save to mongo or disk
+  save('metadata', vals)
 
 ##
 # Prepare scatterplot collection
@@ -562,7 +562,28 @@ def create_scatterplot_collection():
             'target_year': o['target_year'],
           })
 
-  db.scatterplot.insert_many(scatterplot_data)
+  # save to mongo or disk
+  save('scatterplot', scatterplot_data)
+
+##
+# Save JSON to disk
+##
+
+def save(key, obj):
+  db = get_db()
+  # save results to mongo
+  if config['save_to'] == 'mongo':
+    if isinstance(obj, list):
+      db[key].insert_many(obj)
+    else:
+      db[key].insert_one(obj)
+  # save results to disk
+  elif config['save_to'] == 'disk':
+    out_dir = os.path.join(config['tmp'], 'results', key)
+    out_file = str(randint(0, 2**128)) + '.json'
+    make_dirs(out_dir)
+    with open(os.path.join(out_dir, out_file), 'w') as out:
+      json.dump(obj, out)
 
 ##
 # Metadata Helpers
@@ -598,9 +619,10 @@ def get_config():
     'same_author_matches': True,
     'mongo_host': 'localhost',
     'mongo_port': 27017,
+    'save_to': 'mongo',
     'worker_id': get_worker_id(),
     'worker_count': get_worker_count(),
-    'tmp': 'tmp'
+    'tmp': 'tmp',
   }
   with open('config.json') as f:
     config = json.load(f)
@@ -661,15 +683,15 @@ def create_collections():
 
 def sync_workers(task_id):
   if not config['worker_id'] or not config['worker_count']: return
-  db.completed_jobs.insert_one({
-    'worker_id': config['worker_id'],
-    'task_id': task_id
-  })
-  query = {'task_id': task_id}
-  done = len(list(db.completed_jobs.find(query))) == config['worker_count']
+  outdir = os.path.join(config['tmp'], 'tasks', str(task_id))
+  make_dirs(outdir)
+  worker_id = str(config['worker_id'])
+  with open(os.path.join(outdir, worker_id), 'w') as out:
+    out.write(worker_id)
+  done = glob.glob(os.path.join(outdir, '*')) == config['worker_count']
   while not done:
     time.sleep(10)
-    done = len(list(db.completed_jobs.find(query))) == config['worker_count']
+    done = glob.glob(os.path.join(outdir, '*')) == config['worker_count']
   return
 
 ##

@@ -130,7 +130,7 @@ All metadata fields are optional, though all are expressed somewhere in the brow
 
 ## Running on a Compute Cluster
 
-If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing two integer arguments to each intertext process on the command line. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system, one can submit the following job task:
+If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing two integer arguments to each intertext process on the command line. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job task:
 
 ```bash
 #!/bin/bash
@@ -139,7 +139,8 @@ If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you
 #$ -t 1-75:1
 #$ -r y
 source ~/.bash_profile
-python intertext/minhash.py ${SGE_TASK_ID} 75
+module load python/3.6.0
+python3 intertext/minhash.py ${SGE_TASK_ID} 75
 ```
 
 This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job id as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
