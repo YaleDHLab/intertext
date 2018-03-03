@@ -63,7 +63,7 @@ Then navigate to `localhost:7092` and search for an author or text of interest.
 
 ## config.json
 
-The following values within `config.json` control the way Intertext discovers text reuse:
+`config.json` controls the way Intertext discovers text reuse in your corpus. The only required fields are `infiles` and `metadata`, though several other options may be specified to override the defaults:
 
 | Field  | Default | Remarks |
 | ------------- | ------ | ------------- |
@@ -73,9 +73,11 @@ The following values within `config.json` control the way Intertext discovers te
 | window_size | 14 | Words in each window. Increase to find longer matches |
 | step | 4 | Words to skip when sliding each window |
 | xml_tag | False | XML node from which to extract input text (if relevant) |
-| same_author_matches | True | Store matches where source author == target author ? |
+| encoding | utf8 | The encoding of the input documents |
+| same_author_matches | True | Store matches where source author == target author? |
 | mongo_host | localhost | The host on which Mongo is running |
 | mongo_port | 27017 | The port on which Mongo is running |
+| db | intertext | The db in which Mongo will store results |
 | *n_permutations | 256 |  Increasing this raises recall but lowers speed |
 | *hashband_length | 4 | Increasing this lowers recall but raises speed |
 | *min_similarity | 0.65 | Increasing this raises precision but lowers recall |

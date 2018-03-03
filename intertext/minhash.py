@@ -10,7 +10,7 @@ from random import randint
 from shutil import rmtree
 from nltk import ngrams
 from bs4 import BeautifulSoup
-import glob, json, sys, os, time
+import glob, json, sys, os, time, codecs
 
 ##
 # Filter keys - identify hashbands that occur 2+ times
@@ -52,11 +52,21 @@ def make_dirs(path):
     pass
 
 def get_windows(text_path):
-  with open(text_path) as f:
-    words = get_text_content(f.read()).lower().split()
+  words = get_text_content(read_file(text_path)).lower().split()
   for window_id, window in enumerate(ngrams(words, config['window_size'])):
     if window_id % config['step'] == 0:
       yield window
+
+def read_file(text_path):
+  '''
+  Try to read a file, and return an empty string on err
+  '''
+  try:
+    with codecs.open(text_path, 'r', config['encoding']) as f:
+      return f.read()
+  except Exception:
+    print(' ! warning', text_path, 'could not be parsed')
+    return ''
 
 def get_hashbands(window):
   minhash = MinHash(num_perm=config['n_permutations'], seed=1)
@@ -610,6 +620,7 @@ def get_config():
   defaults = {
     'load_hashbands': False,
     'xml_tag': False,
+    'encoding': 'utf8',
     'max_cores': 8,
     'step': 4,
     'window_size': 14,
@@ -620,6 +631,7 @@ def get_config():
     'mongo_host': 'localhost',
     'mongo_port': 27017,
     'save_to': 'mongo',
+    'db': 'intertext',
     'worker_id': get_worker_id(),
     'worker_count': get_worker_count(),
     'tmp': 'tmp',
@@ -688,10 +700,10 @@ def sync_workers(task_id):
   worker_id = str(config['worker_id'])
   with open(os.path.join(outdir, worker_id), 'w') as out:
     out.write(worker_id)
-  done = glob.glob(os.path.join(outdir, '*')) == config['worker_count']
+  done = len(glob.glob(os.path.join(outdir, '*'))) == config['worker_count']
   while not done:
     time.sleep(10)
-    done = glob.glob(os.path.join(outdir, '*')) == config['worker_count']
+    done = len(glob.glob(os.path.join(outdir, '*'))) == config['worker_count']
   return
 
 ##
@@ -701,7 +713,7 @@ def sync_workers(task_id):
 def get_db():
   host = config['mongo_host']
   port = config['mongo_port']
-  return MongoClient(host, port)['intertext']
+  return MongoClient(host, port)[config['db']]
 
 ##
 # Main
