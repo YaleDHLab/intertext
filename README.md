@@ -69,7 +69,7 @@ Then navigate to `localhost:7092` and search for an author or text of interest.
 | ------------- | ------ | ------------- |
 | infiles | None | Glob path to files to be searched for text reuse |
 | metadata | None | Path to the metadata file describing each input file |
-| max_cores | 8 | Maximum number of cpu cores to use during processing |
+| max_cores | cpu_count - 2 | Maximum number of cpu cores to use |
 | window_size | 14 | Words in each window. Increase to find longer matches |
 | step | 4 | Words to skip when sliding each window |
 | xml_tag | False | XML node from which to extract input text (if relevant) |
@@ -91,7 +91,7 @@ Providing a value for one of the files above will override the default value.
 {
   "infiles": "data/texts/*.txt",
   "metadata": "data/metadata/metadata.json",
-  "max_cores": 7,
+  "max_cores": 8,
   "min_similarity": 0.75
 }
 ```
@@ -132,7 +132,7 @@ All metadata fields are optional, though all are expressed somewhere in the brow
 
 ## Running on a Compute Cluster
 
-If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing two integer arguments to each intertext process on the command line. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job task:
+If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing `worker_id` and `worker_count` to the intertext process. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job file:
 
 ```bash
 #!/bin/bash
@@ -142,7 +142,7 @@ If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you
 #$ -r y
 source ~/.bash_profile
 module load python/3.6.0
-python3 intertext/minhash.py ${SGE_TASK_ID} 75
+python3 intertext/minhash.py -worker_id=${SGE_TASK_ID} -worker_count=75
 ```
 
 This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job id as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
