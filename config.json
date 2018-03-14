@@ -1,5 +1,4 @@
 {
   "infiles": "data/texts/*.txt",
-  "metadata": "data/metadata/metadata.json",
-  "save_to": "disk"
+  "metadata": "data/metadata/metadata.json"
 }

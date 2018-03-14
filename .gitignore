@@ -1,6 +1,7 @@
 *.swp
 *.pem
 *.pyc
+*.archive
 *.DS_Store
 tmp
 node_modules
