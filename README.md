@@ -1,7 +1,7 @@
 # Intertext
-> Detect and visualize text reuse.
+> Detect and visualize text reuse within collections of plain text or XML documents.
 
-Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive javascript components.
+Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components.
 
 ![App preview](/src/assets/images/preview.png?raw=true)
 
@@ -63,20 +63,27 @@ Then navigate to `localhost:7092` and search for an author or text of interest.
 
 ## config.json
 
-The following values within `config.json` control the way Intertext discovers text reuse:
+`config.json` controls the way Intertext discovers text reuse in your corpus. The only required fields are `infiles` and `metadata`, though several other options may be specified to override the defaults:
 
-| Field  | Remarks |
-| ------------- | ------------- |
-| infiles | A glob path to the files to be searched for text reuse |
-| metadata | A path to the metadata file describing each input file |
-| xml_tag | The XML node from which to extract input text (if applicable) |
-| max_cores | The maximum number of cpu cores to use during processing |
-| step | Words to skip when sliding each window |
-| window_size | Increasing this lowers recall but finds more significant matches |
-| *n_permutations | Increasing this raises recall but lowers speed |
-| *hashband_length | Increasing this lowers recall but raises speed |
-| *min_similarity | Increasing this raises precision but lowers recall |
+| Field  | Default | Remarks |
+| ------------- | ------ | ------------- |
+| infiles | None | Glob path to files to be searched for text reuse |
+| metadata | None | Path to the metadata file describing each input file |
+| max_cores | cpu_count - 2 | Maximum number of cpu cores to use |
+| window_size | 14 | Words in each window. Increase to find longer matches |
+| step | 4 | Words to skip when sliding each window |
+| xml_tag | False | XML node from which to extract input text (if relevant) |
+| encoding | utf8 | The encoding of the input documents |
+| same_author_matches | True | Store matches where source author == target author? |
+| mongo_host | localhost | The host on which Mongo is running |
+| mongo_port | 27017 | The port on which Mongo is running |
+| db | intertext | The db in which Mongo will store results |
+| *n_permutations | 256 |  Increasing this raises recall but lowers speed |
+| *hashband_length | 4 | Increasing this lowers recall but raises speed |
+| *min_similarity | 0.65 | Increasing this raises precision but lowers recall |
 \* = *essential analytic parameter*
+
+Providing a value for one of the files above will override the default value.
 
 **Sample config.json file**:
 
@@ -84,13 +91,8 @@ The following values within `config.json` control the way Intertext discovers te
 {
   "infiles": "data/texts/*.txt",
   "metadata": "data/metadata/metadata.json",
-  "xml_tag": false,
   "max_cores": 8,
-  "step": 4,
-  "window_size": 14,
-  "n_permutations": 256,
-  "hashband_length": 3,
-  "min_similarity": 0.65
+  "min_similarity": 0.75
 }
 ```
 
@@ -127,6 +129,25 @@ All metadata fields are optional, though all are expressed somewhere in the brow
   }
 }
 ```
+
+## Running on a Compute Cluster
+
+If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing `worker_id` and `worker_count` to the intertext process. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job file:
+
+```bash
+#!/bin/bash
+#$ -N job-name
+#$ -o output.log
+#$ -t 1-75:1
+#$ -r y
+source ~/.bash_profile
+module load python/3.6.0
+python3 intertext/minhash.py -worker_id=${SGE_TASK_ID} -worker_count=75
+```
+
+This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job id as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
+
+Please note all jobs will need to finish a task before any job moves on, so you should only submit a number of jobs equal to the number you can expect to run at the same time on the compute cluster.
 
 ## Deploying on AWS
 

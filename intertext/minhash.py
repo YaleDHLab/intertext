@@ -1,55 +1,66 @@
 from __future__ import division, print_function
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from collections import defaultdict
 from datasketch import MinHash
+from itertools import cycle
+from functools import reduce
 from difflib import SequenceMatcher
 from pymongo import MongoClient
+from random import randint
 from shutil import rmtree
 from nltk import ngrams
 from bs4 import BeautifulSoup
-import glob, json, sys, os
+from glob import glob
+import json
+import sys
+import os
+import time
+import codecs
+import argparse
 
 ##
 # Filter keys - identify hashbands that occur 2+ times
 ##
 
-def count_hashbands():
-  print(' * counting hashbands')
-  rm_dirs('tmp')
+def write_hashbands():
+  print(' * writing hashbands')
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(count_file_hashbands, text_ids)):
-    print(' * counted', c+1, 'of', len(infiles), 'hashbands')
+  worker_text_ids = get_worker_list(text_ids)
+  args = [[i, c] for c, i in enumerate(worker_text_ids)]
+  for c, _ in enumerate(pool.imap(write_file_hashbands, args)):
+    print(' * wrote', c+1, 'of', len(infiles), 'hashbands')
   pool.close()
   pool.join()
 
-def count_file_hashbands(text_id):
+def write_file_hashbands(args):
+  text_id, process_id = args
   text_path = infiles[int(text_id)]
   for window_id, window in enumerate(get_windows(text_path)):
     for hashband in get_hashbands(window):
       a, b = hashband[0:2], hashband[2:4]
-      outdir = os.path.join('tmp', 'hashbands', a, b)
+      outdir = os.path.join(config['tmp'], 'hashbands', a, b)
       make_dirs(outdir)
-      with open( os.path.join(outdir, a + b), 'a') as out:
+      filename = a + b + '#' + str(process_id)
+      if 'worker_id' in config: filename += '#' + str(config['worker_id'])
+      with open( os.path.join(outdir, filename), 'a') as out:
         out.write(hashband + '-' + text_id + '.' + str(window_id) + '#')
 
-def rm_dirs(path):
-  try:
-    rmtree('tmp')
-  except:
-    pass
-
-def make_dirs(path):
-  try:
-    os.makedirs(path)
-  except:
-    pass
-
 def get_windows(text_path):
-  with open(text_path) as f:
-    words = get_text_content(f.read()).lower().split()
+  words = get_text_content(read_file(text_path)).lower().split()
   for window_id, window in enumerate(ngrams(words, config['window_size'])):
     if window_id % config['step'] == 0:
       yield window
+
+def read_file(text_path):
+  '''
+  Try to read a file, and return an empty string on err
+  '''
+  try:
+    with codecs.open(text_path, 'r', config['encoding']) as f:
+      return f.read()
+  except Exception:
+    print(' ! warning', text_path, 'could not be parsed')
+    return ''
 
 def get_hashbands(window):
   minhash = MinHash(num_perm=config['n_permutations'], seed=1)
@@ -70,23 +81,73 @@ def get_text_content(s):
     return soup.get_text()
   return s
 
+def get_worker_list(arr):
+  '''
+  If this process is using worker ids in a supercompute context,
+  return all nth objects from the input list where n = the worker_id of
+  the process, else return the list
+  '''
+  if config['worker_process']:
+    worker_arr = []
+    for c, i in enumerate(arr):
+      if c % config['worker_count'] == config['worker_id'] - 1:
+        worker_arr.append(i)
+    return worker_arr
+  return arr
+
+##
+# Combine files with identical basenames (up to first #)
+##
+
+def combine_files(_dir, subdirs):
+  '''
+  Descend `subdir` levels into dir, find all files in the resulting dirs,
+  and for each, combine the file contents with all other files that match
+  up to the first #
+  '''
+  path = [config['tmp'], _dir]
+  for i in range(subdirs):
+    path.append('*')
+  _dirs = glob(reduce(os.path.join, path))
+  worker_dirs = get_worker_list(_dirs)
+  pool = Pool(config['max_cores'])
+  for _ in pool.imap(combine_files_in_dir, worker_dirs):
+    pass
+  pool.close()
+  pool.join()
+
+def combine_files_in_dir(_dir):
+  '''
+  Given a dir, combine all files in that dir that share an identical file root
+  where root is defined by the string up to the first #
+  '''
+  for i in glob( os.path.join(_dir, '*#*') ):
+    basename = os.path.basename(i).split('#')[0]
+    with open(i) as f:
+      f = f.read()
+    with open(os.path.join(_dir, basename), 'a') as out:
+      out.write(f)
+    os.remove(i)
+
 ##
 # Use hashband datastore to map file_ids to list of matching_file_ids
 ##
 
 def match_minhash_keys():
-  dirs = glob.glob(os.path.join('tmp', 'hashbands', '*',))
+  dirs = glob(os.path.join(config['tmp'], 'hashbands', '*',))
+  worker_dirs = get_worker_list(dirs)
+  args = [[i, c] for c, i in enumerate(worker_dirs)]
   pool = Pool(config['max_cores'])
-  for c, _ in enumerate(pool.imap(match_minhash_key, dirs)):
+  for c, _ in enumerate(pool.imap(match_minhash_key, args)):
     c += 1
     if c % 100 == 0:
       print(' * processed', c, 'of', len(dirs), 'minhash blocks')
   pool.close()
   pool.join()
 
-def match_minhash_key(_dir):
+def match_minhash_key(args):
   '''
-  dir contains a number of subdirectories, each of which contains
+  _dir contains a number of subdirectories, each of which contains
   a file with hashbands and segment identifiers. For each hashband
   in any file that occurs in multiple distinct files, find all
   combinations among the file_id and segment_ids in which it occurs
@@ -96,9 +157,10 @@ def match_minhash_key(_dir):
   the lower is designated fid'. Then save the values of each fid key
   to a file in tmp/matches/{{ fid }}
   '''
+  _dir, process_id = args
   d = defaultdict(list)
   count = 0
-  for _file in glob.glob(os.path.join(_dir, '*', '*')):
+  for _file in glob(os.path.join(_dir, '*', '*')):
     for matching_ids in get_matching_ids(_file):
       for id_pair in ngrams(matching_ids, 2):
         file_id_a, file_segment_a = id_pair[0].split('.')
@@ -110,11 +172,11 @@ def match_minhash_key(_dir):
             d[file_id_b].append( id_pair[1] + '-' + id_pair[0] )
           count += 1
         if count >= 10000:
-          save_matches(d)
+          save_matches(d, process_id)
           d = defaultdict(list)
           count = 0
   if count:
-    save_matches(d)
+    save_matches(d, process_id)
 
 def get_matching_ids(file_path):
   '''
@@ -135,16 +197,18 @@ def get_matching_ids(file_path):
       matching_ids.append(d[key])
   return matching_ids
 
-def save_matches(d):
+def save_matches(d, process_id):
   '''
   d is a defaultdict whose keys represent file ids and whose values
   are lists of strings in the form: fid.sid-fid'.sid'. Add all
   file and segment ids for each file id to disk
   '''
   for i in d:
-    outdir = os.path.join('tmp', 'matches')
+    outdir = os.path.join(config['tmp'], 'matches')
     make_dirs(outdir)
-    with open(os.path.join('tmp', 'matches', i), 'a') as out:
+    filename = i + '#' + str(process_id)
+    if 'worker_id' in config: filename += '#' + str(config['worker_id'])
+    with open(os.path.join(config['tmp'], 'matches', filename), 'a') as out:
       out.write('#'.join(d[i]) + '#')
 
 ##
@@ -153,13 +217,15 @@ def save_matches(d):
 
 def validate_all_matches():
   pool = Pool(config['max_cores'])
-  match_files = glob.glob(os.path.join('tmp', 'matches', '*'))
-  for c, _ in enumerate(pool.imap(validate_text_matches, match_files)):
+  match_files = glob(os.path.join(config['tmp'], 'matches', '*'))
+  worker_match_files = get_worker_list(match_files)
+  args = [[i, c] for c, i in enumerate(worker_match_files)]
+  for c, _ in enumerate(pool.imap(validate_text_matches, args)):
     print(' * validated', c+1, 'of', len(match_files), 'file matches')
   pool.close()
   pool.join()
 
-def validate_text_matches(match_file):
+def validate_text_matches(args):
   '''
   match_file is a path to a file for which the filename is the file id
   and for which the file content is a sequence of items in the following
@@ -171,6 +237,7 @@ def validate_text_matches(match_file):
   add segment_id.match_segment_id to the set of values assigned to the
   true-matches-file_id-match_file_id key.
   '''
+  match_file, process_id = args
   validated = ''
   text_id = os.path.basename(match_file)
   text_matches = get_text_matches(match_file)
@@ -185,7 +252,7 @@ def validate_text_matches(match_file):
         file_ids = text_id + '.' + str(text_window_id)
         match_ids = match_text_id + '.' + str(match_window_id)
         validated += file_ids + '-' + match_ids + '|' + str(similarity) + '#'
-  save_validated_matches(text_id, validated)
+  save_validated_matches(text_id, validated, process_id)
 
 def sim(a, b):
   return SequenceMatcher(None, a, b, autojunk=False).ratio()
@@ -206,9 +273,11 @@ def get_text_matches(match_file):
       d[match_id].append(( int(file_segment_id), int(match_segment_id) ))
   return d
 
-def save_validated_matches(text_id, content):
-  out_dir = os.path.join('tmp', 'validated')
+def save_validated_matches(text_id, content, process_id):
+  out_dir = os.path.join(config['tmp'], 'validated')
   make_dirs(out_dir)
+  filename = text_id + '#' + str(process_id)
+  if 'worker_id' in config: filename += '#' + str(config['worker_id'])
   with open(os.path.join(out_dir, text_id), 'a') as out:
     out.write(content)
 
@@ -218,13 +287,15 @@ def save_validated_matches(text_id, content):
 
 def cluster_all_matches():
   pool = Pool(config['max_cores'])
-  validated_files = glob.glob(os.path.join('tmp', 'validated', '*'))
-  for c, _ in enumerate(pool.imap(cluster_file_matches, validated_files)):
+  validated_files = glob(os.path.join(config['tmp'], 'validated', '*'))
+  worker_validated_files = get_worker_list(validated_files)
+  args = [[i, c] for c, i in enumerate(worker_validated_files)]
+  for c, _ in enumerate(pool.imap(cluster_file_matches, args)):
     print(' * clustered matches in', c+1, 'of', len(validated_files), 'files')
   pool.close()
   pool.join()
 
-def cluster_file_matches(validated_file):
+def cluster_file_matches(args):
   '''
   validated_file is the path to a file in which the filename is a file id
   and the content is a sequence of values with the format:
@@ -233,6 +304,7 @@ def cluster_file_matches(validated_file):
   d[match_file_id] = [(int(file_segment_id), int(match_segment_id), float(sim))]
   then format the matches and save in mongo.
   '''
+  validated_file, process_id = args
   text_id_a = int( os.path.basename(validated_file) )
   validated_matches = get_validated_matches(validated_file)
   if not validated_matches: return None
@@ -325,16 +397,15 @@ def format_matches(file_id_a, file_id_b, clusters):
   with the sequence of b's values -- format the matches into the required
   structure and save in mongo.
   '''
-  db = MongoClient()['intertext']
-  text_id_to_path = get_text_id_to_path()
+  text_id_to_path = {c: i for c, i in enumerate(infiles)}
   a_path = text_id_to_path[ int(file_id_a) ]
   b_path = text_id_to_path[ int(file_id_b) ]
   a_file = os.path.basename(a_path)
   b_file = os.path.basename(b_path)
   a_meta = metadata[a_file]
   b_meta = metadata[b_file]
-  if config['same_author_matches'] == False:
-    if get_value(a_meta, 'author') == get_value(b_meta, 'author'):
+  if not config['same_author_matches']:
+    if a_meta.get('author', '') == b_meta.get('author', ''):
       return
   a_words = get_text_content(open(a_path).read()).split()
   b_words = get_text_content(open(b_path).read()).split()
@@ -342,8 +413,8 @@ def format_matches(file_id_a, file_id_b, clusters):
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'])
     b_strings = get_match_strings(b_words, c['b'])
-    a_year = get_value(a_meta, 'year')
-    b_year = get_value(b_meta, 'year')
+    a_year = a_meta.get('year', '')
+    b_year = b_meta.get('year', '')
     # identify the file published first as the 'source' file
     if (a_year and b_year) and (a_year < b_year):
       formatted.append({
@@ -364,12 +435,12 @@ def format_matches(file_id_a, file_id_b, clusters):
         'target_postmatch': b_strings['postmatch'],
         'source_year': a_year,
         'target_year': b_year,
-        'source_author': get_value(a_meta, 'author'),
-        'target_author': get_value(b_meta, 'author'),
-        'source_title': get_value(a_meta, 'title'),
-        'target_title': get_value(b_meta, 'title'),
-        'source_url': get_value(a_meta, 'url'),
-        'target_url': get_value(b_meta, 'url'),
+        'source_author': a_meta.get('author', ''),
+        'target_author': b_meta.get('author', ''),
+        'source_title': a_meta.get('title', ''),
+        'target_title': b_meta.get('title', ''),
+        'source_url': a_meta.get('url', ''),
+        'target_url': b_meta.get('url', ''),
       })
     else:
       formatted.append({
@@ -388,28 +459,16 @@ def format_matches(file_id_a, file_id_b, clusters):
         'target_match': a_strings['match'],
         'source_postmatch': b_strings['postmatch'],
         'target_postmatch': a_strings['postmatch'],
-        'source_year': get_value(b_meta, 'year'),
-        'target_year': get_value(a_meta, 'year'),
-        'source_author': get_value(b_meta, 'author'),
-        'target_author': get_value(a_meta, 'author'),
-        'source_title': get_value(b_meta, 'title'),
-        'target_title': get_value(a_meta, 'title'),
-        'source_url': get_value(b_meta, 'url'),
-        'target_url': get_value(a_meta, 'url')
+        'source_year': b_meta.get('year', ''),
+        'target_year': a_meta.get('year', ''),
+        'source_author': b_meta.get('author', ''),
+        'target_author': a_meta.get('author', ''),
+        'source_title': b_meta.get('title', ''),
+        'target_title': a_meta.get('title', ''),
+        'source_url': b_meta.get('url', ''),
+        'target_url': a_meta.get('url', '')
       })
-  db.matches.insert_many(formatted)
-
-def get_value(d, k):
-  try:
-    return d[k]
-  except KeyError:
-    return ''
-
-def get_text_id_to_path():
-  d = {}
-  for c, i in enumerate(infiles):
-    d[c] = i
-  return d
+  save('matches', formatted)
 
 def get_match_strings(words, segment_ids):
   start = min(segment_ids) * config['step']
@@ -421,24 +480,37 @@ def get_match_strings(words, segment_ids):
   }
 
 ##
-# Create other collections
+# Create database collections
 ##
 
+def create_matches_collection():
+  '''
+  Create one document in db.matches for each match discovered
+  during data processing. Only used if config.load_results = True
+  '''
+  if not config['load_results']:
+    return
+  match_files = os.path.join(config['tmp'], 'results', 'matches', '*')
+  for i in glob(match_files):
+    print(' * saving match file', i)
+    with open(i) as f:
+      j = json.load(f)
+      save('matches', j)
+
 def create_typeahead_collection():
-  db = MongoClient()['intertext']
   vals = []
   for i in ['source', 'target']:
     for j in ['author', 'title']:
       for k in db.matches.distinct(i + '_' + j):
         vals.append({'type': i + '_' + j, 'field': j, 'value': k})
-  db.typeahead.insert_many(vals)
+  # save to mongo or disk
+  save('typeahead', vals)
 
 def create_config_collection():
-  db = MongoClient()['intertext']
-  db.config.insert(config)
+  # save to mongo or disk
+  save('config', config)
 
 def create_metadata_collection():
-  db = MongoClient()['intertext']
   vals = []
   for c, i in enumerate(infiles):
     vals.append({
@@ -447,11 +519,8 @@ def create_metadata_collection():
       'path': i,
       'metadata': metadata[ os.path.basename(i) ]
     })
-  db.metadata.insert(vals)
-
-##
-# Prepare scatterplot collection
-##
+  # save to mongo or disk
+  save('metadata', vals)
 
 def create_scatterplot_collection():
   '''
@@ -495,7 +564,57 @@ def create_scatterplot_collection():
             'target_year': o['target_year'],
           })
 
-  db.scatterplot.insert_many(scatterplot_data)
+  # save to mongo or disk
+  save('scatterplot', scatterplot_data)
+
+def create_collections():
+  '''
+  Populate the required mongo tables after the last worker finishes
+  '''
+  if config['worker_process']:
+    if config['worker_count'] != config['worker_id'] + 1:
+      return
+  create_matches_collection()
+  create_typeahead_collection()
+  create_config_collection()
+  create_metadata_collection()
+  create_scatterplot_collection()
+
+##
+# Save JSON to mongo or disk
+##
+
+def save(key, obj):
+  db = get_db()
+  # save results to mongo
+  if config['save_to'] == 'mongo':
+    if isinstance(obj, list):
+      db[key].insert_many(obj)
+    else:
+      db[key].insert_one(obj)
+  # save results to disk
+  elif config['save_to'] == 'disk':
+    out_dir = os.path.join(config['tmp'], 'results', key)
+    out_file = str(randint(0, 2**128)) + '.json'
+    make_dirs(out_dir)
+    with open(os.path.join(out_dir, out_file), 'w') as out:
+      json.dump(obj, out)
+
+##
+# Directory Helpers
+##
+
+def rm_dirs(path):
+  try:
+    rmtree(config['tmp'])
+  except:
+    pass
+
+def make_dirs(path):
+  try:
+    os.makedirs(path)
+  except:
+    pass
 
 ##
 # Metadata Helpers
@@ -519,40 +638,126 @@ def get_metadata():
 ##
 
 def get_config():
-  defaults = {'load_hashbands': False, 'same_author_matches': True}
+  defaults = {
+    'max_cores': cpu_count()-2,
+    'xml_tag': False,
+    'encoding': 'utf8',
+    'step': 4,
+    'window_size': 14,
+    'n_permutations': 256,
+    'hashband_length': 4,
+    'min_similarity': 0.65,
+    'same_author_matches': True,
+    'mongo_host': 'localhost',
+    'mongo_port': 27017,
+    'save_to': 'mongo',
+    'db': 'intertext',
+    'tmp': 'tmp',
+    'worker_id': args.worker_id,
+    'worker_count': args.worker_count,
+    'worker_process': args.worker_id and args.worker_count,
+    'load_results': args.load_results
+  }
   with open('config.json') as f:
     config = json.load(f)
   for k in defaults:
     if not k in config:
       config[k] = defaults[k]
+  if config['load_results']:
+    config['save_to'] = 'mongo'
   return config
+
+##
+# Clear Mongo Tables and Tmp Files
+##
+
+def clear_tables():
+  if config['worker_process']:
+    if config['worker_id'] == 0:
+      [db[c].drop() for c in db.collection_names()]
+  else:
+    [db[c].drop() for c in db.collection_names()]
+
+def clear_tmp_files():
+  if config['load_results']:
+    return
+  elif config['worker_process']:
+    if config['worker_id'] == 0:
+      rm_dirs(config['tmp'])
+  else:
+    rm_dirs(config['tmp'])
+
+##
+# Synchronize workers so no worker advances until all complete each step
+##
+
+def sync_workers(task_id):
+  if not config['worker_id'] or not config['worker_count']: return
+  outdir = os.path.join(config['tmp'], 'tasks', str(task_id))
+  make_dirs(outdir)
+  worker_id = str(config['worker_id'])
+  with open(os.path.join(outdir, worker_id), 'w') as out:
+    out.write(worker_id)
+  done = len(glob(os.path.join(outdir, '*'))) == config['worker_count']
+  while not done:
+    time.sleep(10)
+    done = len(glob(os.path.join(outdir, '*'))) == config['worker_count']
+  return
+
+##
+# DB Helpers
+##
+
+def get_db():
+  host = config['mongo_host']
+  port = config['mongo_port']
+  return MongoClient(host, port)[config['db']]
 
 ##
 # Main
 ##
 
+def run_task(task_id, task, combine_key=None, n_subdirs=0):
+  '''
+  Run a task and block workers until all complete.
+  If files need to be combined, combine those files,
+  and again block until all have completed.
+  '''
+  task()
+  sync_workers(task_id)
+  if combine_key:
+    combine_files(combine_key, subdirs=n_subdirs)
+    sync_workers(task_id+1)
+
 def main():
-  if not config['load_hashbands']: count_hashbands()
-  match_minhash_keys()
-  validate_all_matches()
-  cluster_all_matches()
-  create_typeahead_collection()
-  create_config_collection()
-  create_metadata_collection()
-  create_scatterplot_collection()
+  if not config['load_results']:
+    run_task(0, write_hashbands, 'hashbands', 2)
+    run_task(2, match_minhash_keys, 'matches', 0)
+    run_task(4, validate_all_matches, 'validated', 0)
+    run_task(6, cluster_all_matches)
+  create_collections()
 
 if __name__ == '__main__':
 
+  # configure cli parser
+  parser = argparse.ArgumentParser(description='Discover text reuse')
+  parser.add_argument('-worker_id', default=None, type=int, help='Current worker id')
+  parser.add_argument('-worker_count', default=None, type=int, help='Total worker count')
+  parser.add_argument('-load_results', default=False, type=bool, help='Load results from disk?')
+  args = parser.parse_args()
+
+  # load config and globals
   config = get_config()
-  infiles = glob.glob(config['infiles'])
+  infiles = glob(config['infiles'])
   text_ids = [str(i) for i in range(len(infiles))]
+  process_ids = range(config['max_cores'])
   metadata = get_metadata()
+  db = get_db()
 
   # validate inputs are present
   if not infiles: raise Exception('No input files were found!')
 
-  # remove all extant records
-  db = MongoClient()['intertext']
-  [db[c].drop() for c in db.collection_names()]
-
+  # remove all extant records unless supercomputing
+  clear_tmp_files()
+  clear_tables()
   main()
