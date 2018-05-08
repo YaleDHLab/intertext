@@ -35,7 +35,7 @@ cd intertext && pip install -r requirements.txt --user
 npm install --no-optional
 
 # detect reuse in the included sample documents
-npm run detect-reuse
+python intertext/minhash.py
 
 # start the web server
 npm run production
@@ -43,9 +43,9 @@ npm run production
 
 If you open a web browser to `localhost:7092`, you will be able to browse discovered intertexts.
 
-## Processing New Data
+## Discovering Text Reuse
 
-To process new data, you need to install the app dependencies, then replace the files in `data/texts` with your text files and replace the metadata file in `data/metadata` with a new metadata file. Make sure your new text files and metadata files are in the same format as the sample text and metadata files.
+To discover text reuse in your own text files, install the app dependencies (see above), then replace the files in `data/texts` with your text files and replace the metadata file in `data/metadata` with a new metadata file. Make sure your new text files and metadata files are in the same format as the sample text and metadata files.
 
 Once your files are in place, you can identify intertexts in the data by running:
 
@@ -132,7 +132,7 @@ All metadata fields are optional, though all are expressed somewhere in the brow
 
 ## Running on a Compute Cluster
 
-If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing `worker_id` and `worker_count` to the intertext process. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job file:
+If you have access to a multi-host compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing `host_id` and `host_count` to the intertext process. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job file:
 
 ```bash
 #!/bin/bash
@@ -142,10 +142,10 @@ If you have access to a multi-node compute cluster (a.k.a. a supercomputer), you
 #$ -r y
 source ~/.bash_profile
 module load python/3.6.0
-python3 intertext/minhash.py -worker_id=${SGE_TASK_ID} -worker_count=75
+python3 intertext/minhash.py -host_id=${SGE_TASK_ID} -host_count=75
 ```
 
-This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job id as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
+This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job integer--{1:75} according to the `-t` argument provided--as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
 
 Please note all jobs will need to finish a task before any job moves on, so you should only submit a number of jobs equal to the number you can expect to run at the same time on the compute cluster.
 

@@ -77,8 +77,8 @@ def combine_files(glob_pattern):
     int subdirs: the number of subdirectories to descend into _dir
       when looking for matching files
   '''
-  worker_paths = get_host_args(glob(glob_pattern))
-  for _ in multiprocess(combine_files_in_dir, worker_paths):
+  paths = get_host_args(glob(glob_pattern))
+  for _ in multiprocess(combine_files_in_dir, paths):
     pass
 
 
@@ -96,13 +96,13 @@ def get_host_args(arr):
     is running in a multi-host context
   '''
   if config['multihost']:
-    worker_arr = []
+    host_arr = []
     for idx, i in enumerate(arr):
-      # conditionally add this item to the current worker's queue
+      # conditionally add this item to the current host's queue
       # NB: we assume host ids use 1-based indexing
       if idx % config['host_count'] == config['host_id'] - 1:
-        worker_arr.append(i)
-    return worker_arr
+        host_arr.append(i)
+    return host_arr
   return arr
 
 
@@ -243,16 +243,35 @@ def get_metadata():
     return {}
 
 
+def get_nested_path(root_dir, filename):
+  '''
+  Given a root directory name and the name of the file to be
+  stored within that directory, create an outfile path that
+  uses the first three characters in filename as nested
+  directories in out_dir to minimize files per directory
+  @args:
+    str root_dir: the name of a directory within config['tmp']
+    str filename: the name of a file
+  @returns:
+    str: the path to `filename` in `dir_name` with several
+      intermediary subdirectories
+  '''
+  out_dirs = [config['tmp'], root_dir]
+  out_dirs += [i for i in os.path.basename(filename)[:3]]
+  out_dir = reduce(os.path.join, out_dirs)
+  make_dirs(out_dir)
+  return os.path.join(out_dir, filename)
+
 ##
 # 1) Hash input texts
 ##
 
-def hash_input_files():
+def hash_inputs():
   '''
   For each input file, partition that text into windows. Hash each
   window, then pass a sliding window over the hashes to get a
-  sequence of "hashbands" for each window. Windows with identical
-  hashband sequences are candidates for a match.
+  sequence of "hashbands" for each window. Store the hashbands
+  that occur in each infile.
   '''
   print(' * writing hashbands')
   args = [[i, idx] for idx, i in enumerate(get_host_args(text_ids))]
@@ -274,18 +293,16 @@ def hash_input_file(args):
   '''
   text_id, process_id = args
   text_path = infiles[int(text_id)]
-  for window_id, window in enumerate(get_windows(text_path)):
-    for hashband in get_hashbands(window):
-      # a and b represent the letters 0+1 and 2+3 in hashband
-      # these are used to create a simple tree structure on disk
-      # for quick hashband retrieval
-      a, b = hashband[0:2], hashband[2:4]
-      outdir = os.path.join(config['tmp'], 'hashbands', a, b)
-      make_dirs(outdir)
-      filename = a + b + '#' + str(process_id)
-      filename += '#' + str(config['host_id']) if config['host_id'] else ''
-      content = hashband + '-' + text_id + '.' + str(window_id) + '#'
-      append(os.path.join(outdir, filename), content)
+  text_hashbands = []
+  # specify the path to the hashbands to be stored
+  out_path = get_nested_path('hashbands', os.path.basename(text_path))
+  # skip this file if its hashbands are already present
+  if os.path.exists(out_path):
+    return
+  # join the hashbands in each window of the file with *
+  for window in get_windows(text_path):
+    text_hashbands += list(get_hashbands(window)) + ['*']
+  append(out_path, text_id + '=' + '#'.join(text_hashbands))
 
 
 def get_windows(path):
@@ -356,22 +373,72 @@ def get_hashbands(window):
       hashband_vals = []
       yield hashband
 
+##
+# 2) Sort file hashes
+##
+
+def sort_hashbands():
+  '''
+  For each input file, partition that text into windows. Hash each
+  window, then pass a sliding window over the hashes to get a
+  sequence of "hashbands" for each window. Windows with identical
+  hashband sequences are candidates for a match.
+  '''
+  print(' * sorting hashbands')
+  hashbands = glob(os.path.join(config['tmp'], 'hashbands', '*', '*', '*', '*'))
+  args = [[i, idx] for idx, i in enumerate(get_host_args(hashbands))]
+  for idx, _ in enumerate(multiprocess(sort_file_hashbands, args)):
+    print(' * sorted', idx+1, 'of', len(args), 'hashbands')
+
+
+def sort_file_hashbands(args):
+  '''
+  Sort the hashbands for an input file by identifying the
+  first four characters in each hashband, then writing
+  that hashband to config['tmp']/sorted/01/23/hash,
+  where 01 and 23 represent characters 01 and 23 from the
+  hashband.
+  @args:
+    list args:
+      str: the path to an input file's hashbands file
+      int: an integer representing the index position of a
+        process within all processes allocated for this job
+        on this host
+  '''
+
+  hashband_path, process_id = args
+  text_id, content = read(hashband_path).split('=')
+  for window_id, window in enumerate(content.split('#*#')[:-1]):
+    for hashband in window.split('#'):
+      if not hashband:
+        continue
+      # a and b represent the letters 0+1 and 2+3 in hashband
+      # these are used to create a simple tree structure on disk
+      # for quick hashband retrieval
+      a, b = hashband[0:2], hashband[2:4]
+      outdir = os.path.join(config['tmp'], 'sorted', a, b)
+      make_dirs(outdir)
+
+      filename = a + b + '#' + str(process_id)
+      filename += '#' + str(config['host_id']) if config['host_id'] else ''
+      content = hashband + '-' + text_id + '.' + str(window_id) + '#'
+      append(os.path.join(outdir, filename), content)
+
 
 ##
-# 2) Find candidate matches
+# 3) Find candidate matches
 ##
 
 def find_candidate_matches():
   '''
-  Step 1 generates one output file for each unique hashband in all files.
-  The contents of those files are text and window id values.
-  Step 2 uses the files generated by Step 1 to identify candidate pairs of
-  text matches. This step is separated from Step 3, which validates match
-  pairs, because if we can identify all of the candidate matches between
-  two files before the validation step, we can drastically reduce i/o.
+  Step 2 generates a map from hashband to the text id and window ids
+  in which that hashband occurs. Step 3 uses those output files
+  to identify candidate pairs of text matches. This step is
+  separated from Step 4, which validates match pairs, because if we
+  can identify all of the candidate matches between two files
+  before the validation step, we can drastically reduce i/o.
   '''
-
-  dirs = glob(os.path.join(config['tmp'], 'hashbands', '*',))
+  dirs = glob(os.path.join(config['tmp'], 'sorted', '*',))
   args = [[i, idx] for idx, i in enumerate(get_host_args(dirs))]
   for idx, _ in enumerate(multiprocess(find_candidates_in_directory, args)):
     if (idx + 1) % 100 == 0:
@@ -466,7 +533,7 @@ def save_candidate_matches(d, process_id):
 
 
 ##
-# 3) Validate candidate matches
+# 4) Validate candidate matches
 ##
 
 def validate_matches():
@@ -573,7 +640,7 @@ def save_validated_matches(text_id, content, process_id):
 
 
 ##
-# 4) Cluster matches
+# 5) Cluster matches
 ##
 
 def cluster_matches():
@@ -919,7 +986,7 @@ def create_scatterplot_collection():
 def create_collections():
   '''
   Populate the required mongo data tables. If this process is running
-  in a multhost environment, only allow one worker to create the mongo
+  in a multhost environment, only allow one host to create the mongo
   collections.
   '''
   # in a multihost environment, only allow one host to save to mongo
@@ -928,6 +995,7 @@ def create_collections():
   # load matches from disk before building other collections, if relevant
   if config['load_matches']:
     create_matches_collection()
+  # build the remainder of the collections given match data
   create_typeahead_collection()
   create_config_collection()
   create_metadata_collection()
@@ -995,9 +1063,11 @@ def main():
     return
 
   # run all processing
-  run_task(hash_input_files, os.path.join(config['tmp'], 'hashbands', '*', '*'))
-  run_task(find_candidate_matches, os.path.join(config['tmp'], 'candidates'))
-  run_task(validate_matches, os.path.join(config['tmp'], 'matches'))
+  tmp = config['tmp']
+  run_task(hash_inputs, None)
+  run_task(sort_hashbands, os.path.join(tmp, 'sorted', '*', '*'))
+  run_task(find_candidate_matches, os.path.join(tmp, 'candidates'))
+  run_task(validate_matches, os.path.join(tmp, 'matches'))
   run_task(cluster_matches, None)
   create_collections()
 
