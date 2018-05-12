@@ -5,24 +5,17 @@ Intertext combines machine learning with interactive data visualizations to surf
 
 ![App preview](/src/assets/images/preview.png?raw=true)
 
-## Dependencies
-
-This application uses MongoDB as a database. You can install and start MongoDB on OSX with the following:
-
-```
-brew install mongodb
-brew services start mongodb
-```
-
-This app also uses Node.js as a web server. You can install Node on OSX with the following command:
-
-```
-brew install node
-```
-
 ## Quickstart
 
-Once the dependencies outlined above are installed, you can run:
+This application uses MongoDB as a database, Redis as a cache for message passing, and Node.js as a Web server. You can install these dependencies and start the services on OSX with the following:
+
+```
+brew install mongodb redis node
+brew services start mongodb
+brew services start redis
+```
+
+Once those dependencies are installed, you can install the Python and JavaScript dependencies by running:
 
 ```
 # clone the application source code
@@ -33,7 +26,11 @@ cd intertext && pip install -r requirements.txt --user
 
 # install the node dependencies
 npm install --no-optional
+```
 
+Finally, you can detect text reuse in the included sample documents and view the results by running:
+
+```
 # detect reuse in the included sample documents
 python intertext/minhash.py
 
@@ -42,6 +39,19 @@ npm run production
 ```
 
 If you open a web browser to `localhost:7092`, you will be able to browse discovered intertexts.
+
+## Running on Multiple Servers
+
+```bash
+# start the worker deamon
+celery worker --app intertext.tasks --loglevel info
+
+# create a progress dashboard (view on localhost:5555)
+celery flower --app intertext.tasks --address=127.0.0.1 --port=5555
+
+# process the infiles
+python intertext/scheduler.py
+```
 
 ## Discovering Text Reuse
 
