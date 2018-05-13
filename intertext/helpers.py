@@ -37,7 +37,7 @@ def get_config():
     'clear_tmp_files': True,
     'clear_db': True,
     'save_to': 'mongo',
-    'start_celery': False,
+    'start_celery': True,
   }
   config = load_json('config.json')
   for k in defaults:
