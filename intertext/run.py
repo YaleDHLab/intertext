@@ -14,18 +14,13 @@ def hash_inputs():
   sequence of "hashbands" for each window. Store the hashbands
   that occur in each infile.
   '''
-  print(' * writing hashbands')
-  args = enumerate(text_ids)
-  jobs = group(tasks.hash_input_file.s(i, str(idx)) for idx, i in args)
+  print(' * processing hashbands')
+  jobs = group(tasks.hash_input_file.s(i) for i in text_ids)
   for idx, i in enumerate(jobs.apply_async()):
     result = i.get()
-    print(' * wrote', idx+1, 'of', len(text_ids), 'hashbands')
-  # combine the files (i.e. remove the process_id suffixes)
-  print(' * combining files in ' + config['tmp'] + '/hashbands')
-  dirs = glob(join(config['tmp'], 'hashbands', '*', '*'))
-  jobs = group(tasks.combine_files_in_dir.s(i) for i in dirs)
-  for idx, i in enumerate(jobs.apply_async()):
-    result = i.get()
+    print(' * processed', idx+1, 'of', len(text_ids), 'hashbands')
+  # write the remaining hashbands in redis to disk
+  helpers.write_redis_hashbands()
 
 
 def find_candidate_matches():
@@ -38,18 +33,13 @@ def find_candidate_matches():
   before the validation step, we can drastically reduce i/o.
   '''
   dirs = glob(join(config['tmp'], 'hashbands', '*',))
-  args = enumerate(dirs)
-  jobs = group(tasks.find_candidates.s(i, str(idx)) for idx, i in args)
+  jobs = group(tasks.find_candidates.s(i) for i in dirs)
   for idx, i in enumerate(jobs.apply_async()):
     result = i.get()
     if (idx + 1) % 100 == 0:
-      print(' * processed', idx, 'of', len(dirs), 'minhashes')
-  # combine files in directories
-  print(' * combining files in ' + config['tmp'] + '/candidates')
-  dirs = glob(join(config['tmp'], 'candidates'))
-  jobs = group(tasks.combine_files_in_dir.s(i) for i in dirs)
-  for idx, i in enumerate(jobs.apply_async()):
-    result = i.get()
+      print(' * processed', idx, 'of', len(dirs), 'hashband files')
+  # write the remaining match candidates in redis to disk
+  helpers.write_redis_candidates()
 
 
 def validate_matches():
@@ -84,6 +74,9 @@ if __name__ == '__main__':
   text_ids = helpers.text_ids
   db = helpers.get_db()
 
+  if config['start_celery']:
+    celery_task = helpers.start_celery()
+
   if config['clear_tmp_files']:
     print(' * clearing tmp files')
     helpers.rm_dirs(config['tmp'])
@@ -99,3 +92,7 @@ if __name__ == '__main__':
   validate_matches()
   cluster_matches()
   tasks.create_collections()
+
+  # terminate the celery processes if they were started
+  if config['start_celery']:
+    helpers.terminate_process(celery_task.pid)

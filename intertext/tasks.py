@@ -8,14 +8,14 @@ that receive the worker command to join the worker party.
 
 from __future__ import division, print_function, absolute_import
 from collections import defaultdict
-from datasketch import MinHash
 from itertools import combinations
 from os.path import join, basename
+from glob import glob
 from difflib import SequenceMatcher
+from datasketch import MinHash
 from celery import Celery
 from nltk import ngrams
 from bs4 import BeautifulSoup
-from glob import glob
 import os
 import sys
 import intertext.helpers as helpers
@@ -28,8 +28,10 @@ import intertext.helpers as helpers
 config = helpers.config
 infiles = helpers.infiles
 text_ids = helpers.text_ids
+text_id_to_path = {idx: i for idx, i in enumerate(infiles)}
 metadata = helpers.get_metadata()
 db = helpers.get_db()
+r = helpers.get_redis()
 
 # validate inputs are present
 if not infiles: raise Exception('No input files were found!')
@@ -39,53 +41,32 @@ app = Celery('tasks',
   broker=config['redis_url'])
 
 ##
-# 0) Manage disk state
-##
-
-@app.task(soft_time_limit=60)
-def combine_files_in_dir(_dir):
-  '''
-  Given a dir, combine all files in that dir that share an identical file root
-  where root is defined by the string up to the first #
-  '''
-  for file in glob( join(_dir, '*#*') ):
-    file_name = basename(file).split('#')[0]
-    helpers.write(join(_dir, file_name), helpers.read(file))
-    os.remove(file)
-
-
-##
 # 1) Hash input texts
 ##
 
 @app.task(soft_time_limit=60)
-def hash_input_file(text_id, process_id):
+def hash_input_file(text_id):
   '''
   Write a list of hashbands to disk for an infile.
   @args:
     str text_id: the text_id of an infile, where each text_id is
       an integer cast as a string that represents the index
       position of an infile within the list of all infiles
-    str process_id: an integer cast as a string that represents
-      the index position of a process within all processes
-      allocated for this job among all hosts
   '''
-  d = defaultdict(lambda: defaultdict(list))
+  # a pipeline of commands to execute (to reduce network traffic)
+  pipe = r.pipeline()
+  # the path to the text to process
   text_path = infiles[int(text_id)]
+  # 'table' in which all hashbands will be stored
+  table = 'hashband'
+  # add each hashband transaction to the pipeline
   for window_id, window in enumerate(get_windows(text_path)):
     for hashband in get_hashbands(window):
-      # a and b represent the letters 0+1 and 2+3 in hashband
-      # these are used to create a simple tree structure on disk
-      # for quick hashband retrieval
       a, b = hashband[0:2], hashband[2:4]
-      d[a][b].append(hashband + '-' + text_id + '.' + str(window_id))
-  # concate writes for each hashband
-  for a in d.keys():
-    for b in d[a].keys():
-      out_dir = os.path.join(config['tmp'], 'hashbands', a, b)
-      out_path = os.path.join(out_dir, a + b + '#' + str(process_id))
-      helpers.make_dirs(out_dir)
-      helpers.write(out_path, '#'.join(d[a][b]) + '#')
+      key = table + '-' + a + b
+      value = hashband + '-' + text_id + '.' + str(window_id)
+      pipe.sadd(key, value)
+  helpers.execute_pipe(table, pipe)
 
 
 def get_windows(path):
@@ -98,8 +79,8 @@ def get_windows(path):
     generator: a generator of substrings from the file
   '''
   words = get_text_content(read_input_file(path)).lower().split()
-  for window_id, window in enumerate(ngrams(words, config['window_size'])):
-    if window_id % config['step'] == 0:
+  for window_idx, window in enumerate(ngrams(words, config['window_size'])):
+    if window_idx % config['step'] == 0:
       yield window
 
 
@@ -143,7 +124,7 @@ def get_hashbands(window):
   @returns:
     generator: a generator of strings, where each string has the
       format a.b.c in which individual hashes are concatenated
-      with periods
+      with periods into a 'hashband'
   '''
   minhash = MinHash(num_perm=config['n_permutations'], seed=1)
   for ngram in set(ngrams(' '.join(window), 3)):
@@ -162,17 +143,14 @@ def get_hashbands(window):
 ##
 
 @app.task(soft_time_limit=60)
-def find_candidates(_dir, process_id):
+def find_candidates(hashband_dir):
   '''
   Find candidate matches for text windows by locating hashbands
-  that occur in multiple distinct files. For each such hashband,
-  find all combinations of text and window ids in which the
-  hashband occurs and store them in the following data structure:
-  dict[file_id] = [[file_id.window_id, match_file_id.match_window_id], ...]
-  Note that given a match between file id's a and b, the match
-  will be stored in the list of results for whichever file id is greater.
-  Given that dictionary, save all values of each fild_id key to
-  a file in tmp/matches/{{ file_id }}
+  that occur in multiple distinct input files. For each such
+  hashband, find and store all combinations of text and window ids
+  in which the hashband occurs. Note that given a match between
+  file id's a and b, the match will be stored in the list of
+  results for whichever file id is greater.
   @args:
     str: the path to a directory that is a child directory of
       /tmp/hashbands
@@ -180,9 +158,10 @@ def find_candidates(_dir, process_id):
       the index position of a process within all processes
       allocated for this job among all hosts
   '''
-  d = defaultdict(list)
-  count = 0
-  for file in glob(join(_dir, '*', '*')):
+  pipe = r.pipeline()
+  table = 'candidates'
+  # `file` will be a single file with hashband results
+  for file in glob(join(hashband_dir, '*', '*')):
     for matching_ids in get_matching_ids(file):
       # find all combinations of matches between the ids in this match cluster
       for id_pair in combinations(matching_ids, 2):
@@ -190,61 +169,47 @@ def find_candidates(_dir, process_id):
         file_id_a, file_segment_a = id_pair[0].split('.')
         file_id_b, file_segment_b = id_pair[1].split('.')
         # don't allow same-file matches
-        if file_id_a != file_id_b:
-          # store the match in the larger of the file_ids
-          if file_id_a > file_id_b:
-            d[file_id_a].append( id_pair[0] + '-' + id_pair[1] )
-          else:
-            d[file_id_b].append( id_pair[1] + '-' + id_pair[0] )
-          count += 1
-        if count >= 10000:
-          save_candidate_matches(d, process_id)
-          d = defaultdict(list)
-          count = 0
-  if count:
-    save_candidate_matches(d, process_id)
+        if file_id_a == file_id_b:
+          continue
+        # store the match in the larger of the file_ids
+        if file_id_a > file_id_b:
+          key = table + '-' + file_id_a
+          value = id_pair[0] + '-' + id_pair[1]
+        else:
+          key = table + '-' + file_id_b
+          value = id_pair[1] + '-' + id_pair[0]
+        # add the set addition operation to the pipeline
+        pipe.sadd(key, value)
+        # if the pipeline grows very large, write match candidates to disk
+        if len(pipe) >= 100000:
+          helpers.execute_pipe(table, pipe)
+  if len(pipe):
+    helpers.execute_pipe(table, pipe)
 
 
-def get_matching_ids(file_path):
+def get_matching_ids(hashband_file_path):
   '''
-  Find the unique hashbands in a hashband file designated by `file_path`,
-  and for each, find the list of file_id and window_ids in which
-  that hashband occurs. Each hashband file stores data in the following form:
-  hashband-file_id.window_id# . Return a list of lists where sublists
-  have the format: [file_id_a.window_id_a, file_id_b.window_id_b].
+  Find the unique hashbands in a hashband file designated by
+  `hashband_file_path`. For each hashband, find the list of
+  file_id and window_ids in which that hashband occurs. Each
+  hashband file stores data in the following form:
+    hashband-file_id.window_id#
   @args:
     str file_path: the path to a file full of hashband results
   @returns:
-    list: a list of lists where sublists detail text windows that share
-      a given hashband: [file_id_a.window_id_a, file_id_b.window_id_b]
+    set: a set of tuples that identify windows that share a hashband:
+      [file_id_a.window_id_a, file_id_b.window_id_b]
   '''
-  matching_ids = []
-  d = defaultdict(list)
-  for i in helpers.read(file_path).split('#')[:-1]:
+  matching_ids = set()
+  d = defaultdict(set)
+  for i in helpers.read(hashband_file_path).split('#')[:-1]:
     hashband, file_id_window_id = i.split('-')
-    d[hashband].append(file_id_window_id)
+    d[hashband].add(file_id_window_id)
   # don't return results for hashbands that occur in only one file
   for key in d:
     if len(d[key]) > 1:
-      matching_ids.append(d[key])
+      matching_ids.add(tuple(d[key]))
   return matching_ids
-
-
-def save_candidate_matches(d, process_id):
-  '''
-  Save all received candidate matches to disk.
-  @args:
-    dict d: a dictionary whose keys represent file ids and whose values
-      are lists of strings in the following format: [file_id_a.window_id_a,
-        file_id_b.window_id_b]
-    int process_id: the index position of the current process in the list
-      of processes in this job on this host
-  '''
-  for file_id in d:
-    outdir = join(config['tmp'], 'candidates')
-    helpers.make_dirs(outdir)
-    filename = file_id + '#' + str(process_id)
-    helpers.write(join(outdir, filename), '#'.join(d[file_id]) + '#')
 
 
 ##
@@ -268,10 +233,11 @@ def validate_matches(match_file):
   @args:
     str: the path to a candidate match file
   '''
+  print(' * validating match_file ' + match_file)
   validated = ''
-  text_matches = get_text_matches(match_file)
   text_id = basename(match_file)
   text_windows = list( get_windows(infiles[int(text_id)]) )
+  text_matches = get_text_matches(match_file)
   for match_text_id in text_matches:
     match_windows = list( get_windows(infiles[int(match_text_id)]) )
     for text_window_id, match_window_id in text_matches[match_text_id]:
@@ -284,18 +250,6 @@ def validate_matches(match_file):
         match_ids = match_text_id + '.' + str(match_window_id)
         validated += file_ids + '-' + match_ids + '|' + str(similarity) + '#'
   save_validated_matches(text_id, validated)
-
-
-def get_similarity(a, b):
-  '''
-  Return the similarity of two strings
-  @args:
-    str a: a string
-    str b: a string
-  @returns:
-    float: a value {0:1} indicating the similarity between `a` and `b`
-  '''
-  return SequenceMatcher(None, a, b, autojunk=False).ratio()
 
 
 def get_text_matches(match_file):
@@ -315,10 +269,23 @@ def get_text_matches(match_file):
   #   file_id.window_id-match_file_id.match_window_id
   for i in helpers.read(match_file).split('#')[:-1]:
     file_ids, match_ids = i.split('-')
-    file_id, file_segment_id = file_ids.split('.')
-    match_id, match_segment_id = match_ids.split('.')
-    d[match_id].append(( int(file_segment_id), int(match_segment_id) ))
+    file_id, file_window_id = file_ids.split('.')
+    match_id, match_window_id = match_ids.split('.')
+    d[match_id].append( ( int(file_window_id), int(match_window_id) ) )
   return d
+
+
+def get_similarity(a, b):
+  '''
+  Return the similarity of two strings
+  @args:
+    str a: a string
+    str b: a string
+  @returns:
+    float: a value {0:1} indicating the similarity between `a` and `b`
+  '''
+  sim = SequenceMatcher(None, a, b, autojunk=False).ratio()
+  return helpers.limit_float_precision(sim)
 
 
 def save_validated_matches(text_id, content):
@@ -340,7 +307,7 @@ def save_validated_matches(text_id, content):
 ##
 
 @app.task(soft_time_limit=60)
-def cluster_matches(validated_file):
+def cluster_matches(match_file_path):
   '''
   Read in the path to the validated matches for an input file. Each
   validated match file contains matches in the following format:
@@ -350,13 +317,13 @@ def cluster_matches(validated_file):
     d[match_file_id] = [(int(file_segment_id), int(match_segment_id), float(sim))]
   then format the matches and save in mongo.
   @args:
-    str: the path to a file with validated matches
+    str match_file_path: the path to a file with validated matches
   '''
-  text_id_a = int( basename(validated_file) )
-  validated_matches = get_validated_matches(validated_file)
-  for text_id_b in validated_matches:
+  text_id_a = int( basename(match_file_path) )
+  matches = get_validated_matches(match_file_path)
+  for text_id_b in matches.keys():
     text_id_b = int(text_id_b)
-    clusters = get_clusters(validated_matches[text_id_b])
+    clusters = get_clusters(matches[text_id_b])
     format_matches(text_id_a, text_id_b, clusters)
 
 
@@ -366,17 +333,17 @@ def get_validated_matches(validated_file_path):
     dict[match_file_id] = [(int(file_segment_id), int(match_segment_id),
       float(similarity)]
   @args:
-    str validated_file_path: the path to a validated file
+    str validated_file_path: the path to a validated match file
   @returns:
     dict: a dictionary with the form described above
   '''
   d = defaultdict(list)
   for i in helpers.read(validated_file_path).split('#')[:-1]:
     ids, sim = i.split('|')
-    file_ids, match_ids = ids.split('-')
-    file_id, file_segment_id = [int(j) for j in file_ids.split('.')]
-    match_file_id, match_segment_id = [int(j) for j in match_ids.split('.')]
-    d[match_file_id].append(( file_segment_id, match_segment_id, float(sim) ))
+    file_a_ids, file_b_ids = ids.split('-')
+    file_a_id, file_a_window = [int(j) for j in file_a_ids.split('.')]
+    file_b_id, file_b_window = [int(j) for j in file_b_ids.split('.')]
+    d[file_b_id].append(( file_a_window, file_b_window, float(sim) ))
   return d
 
 
@@ -461,7 +428,7 @@ def get_sequences(l):
 # Format Matches
 ##
 
-def format_matches(file_id_one, file_id_two, clusters):
+def format_matches(file_id_a, file_id_b, clusters):
   '''
   Given two file ids and `clusters` -- [{a: [1,2], b: [3,4,5]}, {}...]
   where a's values indicate a sequence of segment ids in text a that
@@ -475,62 +442,70 @@ def format_matches(file_id_one, file_id_two, clusters):
       in which each dictionary represents a cluster of matching
       passages between file_id_a and file_id_b
   '''
-  text_id_to_path = {c: i for c, i in enumerate(infiles)}
 
-  # sort the files by date so a occurs first historically
-  one_meta = metadata[ basename( text_id_to_path[int(file_id_one)] ) ]
-  two_meta = metadata[ basename( text_id_to_path[int(file_id_two)] ) ]
-  if one_meta.get('year', '') < two_meta.get('year', ''):
-    file_id_a = file_id_one
-    file_id_b = file_id_two
+  # sort the files by date so s_ occurs before t_ historically
+  a_meta = metadata[ basename( text_id_to_path[int(file_id_a)] ) ]
+  b_meta = metadata[ basename( text_id_to_path[int(file_id_b)] ) ]
+  if a_meta.get('year', '') < b_meta.get('year', ''):
+    # use {s}ource and {t}arget as organizing metadata facets
+    file_id_s = file_id_a
+    file_id_t = file_id_b
+    for i in clusters:
+      i['s'] = i['a']
+      i['t'] = i['b']
   else:
-    file_id_a = file_id_two
-    file_id_b = file_id_one
+    file_id_s = file_id_b
+    file_id_t = file_id_a
+    for i in clusters:
+      i['s'] = i['b']
+      i['t'] = i['a']
+
+  for i in clusters:
+    del i['a']
+    del i['b']
 
   # pluck out the required attributes for the two file ids
-  a_path = text_id_to_path[ int(file_id_a) ]
-  b_path = text_id_to_path[ int(file_id_b) ]
-  a_file = basename(a_path)
-  b_file = basename(b_path)
-  a_meta = metadata[a_file]
-  b_meta = metadata[b_file]
+  s_path = text_id_to_path[ int(file_id_s) ]
+  t_path = text_id_to_path[ int(file_id_t) ]
+  s_file = basename(s_path)
+  t_file = basename(t_path)
+  s_meta = metadata[s_file]
+  t_meta = metadata[t_file]
   if not config['same_author_matches']:
-    if a_meta.get('author', '') == b_meta.get('author', ''):
+    if s_meta.get('author', '') == t_meta.get('author', ''):
       return
-  a_words = get_text_content(helpers.read(a_path, encoding=config['encoding'])).split()
-  b_words = get_text_content(helpers.read(b_path, encoding=config['encoding'])).split()
+  s_words = get_text_content(helpers.read(s_path, encoding=config['encoding'])).split()
+  t_words = get_text_content(helpers.read(t_path, encoding=config['encoding'])).split()
   formatted = []
   for c in clusters:
-    a_strings = get_match_strings(a_words, c['a'])
-    b_strings = get_match_strings(b_words, c['b'])
-    a_year = a_meta.get('year', '')
-    b_year = b_meta.get('year', '')
+    s_strings = get_match_strings(s_words, c['s'])
+    t_strings = get_match_strings(t_words, c['t'])
 
     formatted.append({
-        'similarity': c['sim'],
-        'source_file_id': int(file_id_a),
-        'target_file_id': int(file_id_b),
-        'source_segment_ids': c['a'],
-        'target_segment_ids': c['b'],
-        'source_filename': a_file,
-        'target_filename': b_file,
-        'source_file_path': a_path,
-        'target_file_path': b_path,
-        'source_prematch': a_strings['prematch'],
-        'target_prematch': b_strings['prematch'],
-        'source_match': a_strings['match'],
-        'target_match': b_strings['match'],
-        'source_postmatch': a_strings['postmatch'],
-        'target_postmatch': b_strings['postmatch'],
-        'source_year': a_year,
-        'target_year': b_year,
-        'source_author': a_meta.get('author', ''),
-        'target_author': b_meta.get('author', ''),
-        'source_title': a_meta.get('title', ''),
-        'target_title': b_meta.get('title', ''),
-        'source_url': a_meta.get('url', ''),
-        'target_url': b_meta.get('url', ''),
-      })
+      'similarity': c['sim'],
+      'source_file_id': int(file_id_s),
+      'target_file_id': int(file_id_t),
+      'source_segment_ids': c['s'],
+      'target_segment_ids': c['t'],
+      'source_filename': s_file,
+      'target_filename': t_file,
+      'source_file_path': s_path,
+      'target_file_path': t_path,
+      'source_prematch': s_strings['prematch'],
+      'target_prematch': t_strings['prematch'],
+      'source_match': s_strings['match'],
+      'target_match': t_strings['match'],
+      'source_postmatch': s_strings['postmatch'],
+      'target_postmatch': t_strings['postmatch'],
+      'source_year': s_meta.get('year', ''),
+      'target_year': t_meta.get('year', ''),
+      'source_author': s_meta.get('author', ''),
+      'target_author': t_meta.get('author', ''),
+      'source_title': s_meta.get('title', ''),
+      'target_title': t_meta.get('title', ''),
+      'source_url': s_meta.get('url', ''),
+      'target_url': t_meta.get('url', ''),
+    })
 
   helpers.save('matches', formatted)
 

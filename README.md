@@ -22,17 +22,18 @@ Once those dependencies are installed, you can install the Python and JavaScript
 git clone https://github.com/YaleDHLab/intertext
 
 # install the Python dependencies
-cd intertext && pip install -r requirements.txt --user
+cd intertext
+pip install -r requirements.txt --user
 
 # install the node dependencies
 npm install --no-optional
 ```
 
-Finally, you can detect text reuse in the included sample documents and view the results by running:
+Once the dependencies are all set, you can detect text reuse in the included [sample documents](data/texts) by running:
 
 ```
 # detect reuse in the included sample documents
-python intertext/minhash.py
+python intertext/run.py
 
 # start the web server
 npm run production
@@ -40,36 +41,40 @@ npm run production
 
 If you open a web browser to `localhost:7092`, you will be able to browse discovered intertexts.
 
-## Running on Multiple Servers
+## Method
+
+The Python resources in this repository use the following pipeline to process input documents given a [config file](#configjson).
+
+Each input document is read in, and XML tags are stripped if the `config.xml_tag` parameter is set. We next pass a sliding window over the text, selecting `config.window_size` words for each window, and sliding the window forward `config.step` words each step. For each window, we identify each three-character sequence in the window (e.g. "quick fox" becomes: 'qui', 'uic', 'ick', 'ck ', 'k f', ' fo', 'fox').
+
+Given the set of these three-character grams, we generate `config.n_permutations` [minhashes](https://en.wikipedia.org/wiki/MinHash) for each text window, where each minhash is an integer that gives a representation of the character trigrams for the window. We then combine each sequence of `config.hashband_length` minhashes for the current window into a "hashband". Any two text windows that share a hashband are identified as potential matches. We use a fuzzy string similarity measurement to validate each potential match, cluster adjacent matches, and format the matches into a JSON packet that can be visualized with the included web client.
+
+A brute force approach to detecting all instances of text reuse in a corpus is essentially O(n^2), as it requires us to compare each document against each document. However, the pipeline outlined above allows us to perform this analysis in linear time, as we only need to pass over the corpus once to extract the hashbands for each window and again to identify the set of windows that share a given hashband. The character-hashing method described above is also fuzzy enough to catch text reuse in cases where word order has changed significantly and cases where spelling oddities and OCR errors create character-level errors in the input documents.
+
+## Distributing over Multiple Servers
+
+The Python resources in this repository use [Celery](http://www.celeryproject.org/) to distribute tasks to multiple processors on one or more servers and Redis to minimize IO. To distribute the work load over several servers (e.g. in a supercomputing context), specify a `redis_url` to which each server has access in the [config file](#configjson), then start a worker process on each of those servers by running the following from the directory that contains this README file:
 
 ```bash
 # start the worker deamon
 celery worker --app intertext.tasks --loglevel info
+```
 
+Once your workers are running, start the task scheduler to begin processing your data:
+
+```bash
+# process the infiles
+python intertext/run.py
+```
+
+For a visual overview of the currently scheduled tasks and the workers' progress on each, you can use [flower](http://flower.readthedocs.io/en/latest/), the Celery monitoring tool, with the following command:
+
+```
 # create a progress dashboard (view on localhost:5555)
 celery flower --app intertext.tasks --address=127.0.0.1 --port=5555
-
-# process the infiles
-python intertext/scheduler.py
 ```
 
-## Discovering Text Reuse
-
-To discover text reuse in your own text files, install the app dependencies (see above), then replace the files in `data/texts` with your text files and replace the metadata file in `data/metadata` with a new metadata file. Make sure your new text files and metadata files are in the same format as the sample text and metadata files.
-
-Once your files are in place, you can identify intertexts in the data by running:
-
-```
-npm run detect-reuse
-```
-
-After processing your texts, you can examine the discovered text reuse by running:
-
-```
-npm run production
-```
-
-Then navigate to `localhost:7092` and search for an author or text of interest.
+If you visit `localhost:5555` after running that command, you'll see an overview of each task in the Celery queue.
 
 ## config.json
 
@@ -79,15 +84,12 @@ Then navigate to `localhost:7092` and search for an author or text of interest.
 | ------------- | ------ | ------------- |
 | infiles | None | Glob path to files to be searched for text reuse |
 | metadata | None | Path to the metadata file describing each input file |
-| max_cores | cpu_count - 2 | Maximum number of cpu cores to use |
-| window_size | 14 | Words in each window. Increase to find longer matches |
-| step | 4 | Words to skip when sliding each window |
 | xml_tag | False | XML node from which to extract input text (if relevant) |
 | encoding | utf8 | The encoding of the input documents |
-| same_author_matches | True | Store matches where source author == target author? |
-| mongo_host | localhost | The host on which Mongo is running |
-| mongo_port | 27017 | The port on which Mongo is running |
-| db | intertext | The db in which Mongo will store results |
+| window_size | 14 | Words in each window. Increase to find longer matches |
+| step | 4 | Words to skip when sliding each window |
+| mongo_url | mongodb://localhost:27017/intertext | A valid MongoDB URI |
+| redis_url | redis://localhost:6379/0 | A valid Redis URI |
 | *n_permutations | 256 |  Increasing this raises recall but lowers speed |
 | *hashband_length | 4 | Increasing this lowers recall but raises speed |
 | *min_similarity | 0.65 | Increasing this raises precision but lowers recall |
@@ -95,14 +97,12 @@ Then navigate to `localhost:7092` and search for an author or text of interest.
 
 Providing a value for one of the files above will override the default value.
 
-**Sample config.json file**:
+**Minimal config.json file**:
 
 ```
 {
   "infiles": "data/texts/*.txt",
   "metadata": "data/metadata/metadata.json",
-  "max_cores": 8,
-  "min_similarity": 0.75
 }
 ```
 
@@ -139,114 +139,3 @@ All metadata fields are optional, though all are expressed somewhere in the brow
   }
 }
 ```
-
-## Running on a Compute Cluster
-
-If you have access to a multi-host compute cluster (a.k.a. a supercomputer), you can run intertext jobs by creating a number of jobs and passing `host_id` and `host_count` to the intertext process. The first of these arguments should identify the index value of the given job, and the second should identify the total number of jobs that will run. For example, to run 75 jobs on a Sun Grid Engine queueing system that uses `module` as a dependency manager, one can submit the following job file:
-
-```bash
-#!/bin/bash
-#$ -N job-name
-#$ -o output.log
-#$ -t 1-75:1
-#$ -r y
-source ~/.bash_profile
-module load python/3.6.0
-python3 intertext/minhash.py -host_id=${SGE_TASK_ID} -host_count=75
-```
-
-This can be submitted with `qsub FILENAME.sh` where FILENAME refers to the name of the bash file with the content above. Each of those intertext processes will receive a unique job integer--{1:75} according to the `-t` argument provided--as `sys.argv[1]` and the total number of jobs as `sys.argv[2]`.
-
-Please note all jobs will need to finish a task before any job moves on, so you should only submit a number of jobs equal to the number you can expect to run at the same time on the compute cluster.
-
-## Deploying on AWS
-
-The following covers steps you can take to deploy this application on an Amazon Linux AMI on AWS.
-
-While creating the instance, add the following Custom TCP Ports to the default security settings:
-
-| Port Range  | Source | Description |
-| ----------- | ------ | ----------- |
-| 80 | 0.0.0.0/0, ::/0 | HTTP |
-| 443 | 0.0.0.0/0, ::/0 | HTTPS |
-| 27017 | 0.0.0.0/0, ::/0 | MongoDB |
-
-After creating and ssh-ing to the instance, you can install all application dependencies, process the sample data, and start the web server with the following commands.
-
-```
-sudo yum update -y
-sudo yum groupinstall "Development Tools" -y
-
-##
-# Node
-##
-
-curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.32.0/install.sh | bash
-. ~/.nvm/nvm.sh
-nvm install 6.10.0
-node -v
-
-##
-# Mongo
-##
-
-sudo touch /etc/yum.repos.d/mongodb-org-3.4.repo
-sudo vim /etc/yum.repos.d/mongodb-org-3.4.repo
-
-# paste the following:
-[mongodb-org-3.4]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/amazon/2013.03/mongodb-org/3.4/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-3.4.asc
-
-sudo yum install -y mongodb-org
-sudo service mongod start
-sudo chkconfig mongod on
-
-##
-# Python dependencies
-##
-
-sudo yum install libxml2-devel libxslt-devel python-devel -y
-wget https://repo.continuum.io/archive/Anaconda2-4.1.1-Linux-x86_64.sh
-bash Anaconda2-4.1.1-Linux-x86_64.sh
-
-# accept the license agreement and default install location
-source ~/.bashrc
-which conda
-rm Anaconda2-4.1.1-Linux-x86_64.sh
-
-# create a virtual environment for your Python dependencies
-conda create --name 3.5 python=3.5
-source activate 3.5
-
-# obtain app source and install Python dependencies
-git clone https://github.com/YaleDHLab/intertext
-cd intertext
-pip install -r requirements.txt --user
-
-##
-# Intertext
-##
-
-# install node dependencies
-npm install
-
-# process texts
-npm run detect-reuse
-
-# start the server
-npm run production
-```
-
-After running these steps (phew!), you should be able to see the application at http://YOUR_INSTANCE_IP:7092. To make the service run on a different port, specify a different port in `server/config.json`.
-
-To forward requests for http://YOUR_INSTANCE_IP to port 7092, run:
-
-```
-sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 7092
-```
-
-Then users can see your application at http://YOUR_INSTANCE_IP without having to state a port.

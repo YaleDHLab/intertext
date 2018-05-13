@@ -4,4 +4,6 @@ datasketch==0.2.6
 flower==0.9.2
 lxml==3.6.4
 nltk==3.2.1
+psutil==5.2.2
 pymongo==3.3.1
+redis==2.10.6
