@@ -74,9 +74,6 @@ if __name__ == '__main__':
   text_ids = helpers.text_ids
   db = helpers.get_db()
 
-  if config['start_celery']:
-    celery_task = helpers.start_celery()
-
   if config['clear_tmp_files']:
     print(' * clearing tmp files')
     helpers.rm_dirs(config['tmp'])
@@ -85,6 +82,9 @@ if __name__ == '__main__':
   if config['clear_db']:
     print(' * clearing db')
     [db[c].drop() for c in db.collection_names()]
+
+  if config['start_celery']:
+    celery_task = helpers.start_celery()
 
   # run functions
   hash_inputs()

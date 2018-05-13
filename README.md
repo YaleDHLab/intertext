@@ -57,7 +57,7 @@ The Python resources in this repository use [Celery](http://www.celeryproject.or
 
 ```bash
 # start the worker deamon
-celery worker --app intertext.tasks --loglevel info
+celery worker --app intertext.tasks --loglevel info --logfile celery.logs
 ```
 
 Once your workers are running, start the task scheduler to begin processing your data:
@@ -80,19 +80,19 @@ If you visit `localhost:5555` after running that command, you'll see an overview
 
 `config.json` controls the way Intertext discovers text reuse in your corpus. The only required fields are `infiles` and `metadata`, though several other options may be specified to override the defaults:
 
-| Field  | Default | Remarks |
-| ------------- | ------ | ------------- |
-| infiles | None | Glob path to files to be searched for text reuse |
-| metadata | None | Path to the metadata file describing each input file |
-| xml_tag | False | XML node from which to extract input text (if relevant) |
-| encoding | utf8 | The encoding of the input documents |
-| window_size | 14 | Words in each window. Increase to find longer matches |
-| step | 4 | Words to skip when sliding each window |
-| mongo_url | mongodb://localhost:27017/intertext | A valid MongoDB URI |
-| redis_url | redis://localhost:6379/0 | A valid Redis URI |
-| *n_permutations | 256 |  Increasing this raises recall but lowers speed |
-| *hashband_length | 4 | Increasing this lowers recall but raises speed |
-| *min_similarity | 0.65 | Increasing this raises precision but lowers recall |
+| Field            | Default | Remarks                   |
+| ---------------- | --------| ------------------------- |
+| infiles          | None    | Glob path to files to be searched for text reuse |
+| metadata         | None    | Path to the metadata file describing each input file |
+| xml_tag          | False   | XML node with text content (False = NA) |
+| encoding         | utf8    | The encoding of the input documents |
+| window_size      | 14      | Words in each window. Increase to find longer matches |
+| step             | 4       | Words to skip when sliding each window |
+| mongo_url        | mongodb://localhost:27017/intertext | A valid MongoDB URI |
+| redis_url        | redis://localhost:6379/0 | A valid Redis URI |
+| *n_permutations  | 256     |  Increasing this raises recall but lowers speed |
+| *hashband_length | 4       | Increasing this lowers recall but raises speed |
+| *min_similarity  | 0.65    | Increasing this raises precision but lowers recall |
 \* = *essential analytic parameter*
 
 Providing a value for one of the files above will override the default value.
@@ -111,12 +111,12 @@ Providing a value for one of the files above will override the default value.
 Each corpus must also have a `metadata.json` file that details metadata for each input file. Each input file should have one top-level key in the metadata file, and each of those keys can have any or all of the following optional attributes (example below):
 
 | Field  | Remarks |
-| ------------- | ------------- |
+| ------ | ------- |
 | author | Author of the text |
-| title | Title of the text |
-| year | Year in which text was published |
-| url | Deeplink to a remote server with the text (or related materials) |
-| image | Image of the author in `src/assets/images/authors` or on remote server |
+| title  | Title of the text |
+| year   | Year in which text was published |
+| url    | Url where author records should link (if any) |
+| image  | Author image in `src/assets/images/authors` or on remote server |
 
 All metadata fields are optional, though all are expressed somewhere in the browser interface.
 

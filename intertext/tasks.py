@@ -44,7 +44,7 @@ app = Celery('tasks',
 # 1) Hash input texts
 ##
 
-@app.task(soft_time_limit=60)
+@app.task()
 def hash_input_file(text_id):
   '''
   Write a list of hashbands to disk for an infile.
@@ -142,7 +142,7 @@ def get_hashbands(window):
 # 2) Find candidate matches
 ##
 
-@app.task(soft_time_limit=60)
+@app.task()
 def find_candidates(hashband_dir):
   '''
   Find candidate matches for text windows by locating hashbands
@@ -181,7 +181,7 @@ def find_candidates(hashband_dir):
         # add the set addition operation to the pipeline
         pipe.sadd(key, value)
         # if the pipeline grows very large, write match candidates to disk
-        if len(pipe) >= 100000:
+        if len(pipe) >= 10000:
           helpers.execute_pipe(table, pipe)
   if len(pipe):
     helpers.execute_pipe(table, pipe)
@@ -216,7 +216,7 @@ def get_matching_ids(hashband_file_path):
 # 3) Validate candidate matches
 ##
 
-@app.task(soft_time_limit=60)
+@app.task()
 def validate_matches(match_file):
   '''
   Validate the candidate matches for a given input file. To do so,
@@ -306,7 +306,7 @@ def save_validated_matches(text_id, content):
 # 4) Cluster matches
 ##
 
-@app.task(soft_time_limit=60)
+@app.task()
 def cluster_matches(match_file_path):
   '''
   Read in the path to the validated matches for an input file. Each

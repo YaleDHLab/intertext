@@ -1,12 +1,12 @@
 from shutil import rmtree
 from random import randint
 from functools import reduce
-from pymongo import MongoClient
 from glob import glob
 from os.path import join
 from psutil import Process
 from subprocess import Popen
-import time
+from redlock import Redlock
+from pymongo import MongoClient
 import redis
 import shlex
 import codecs
@@ -195,7 +195,7 @@ def get_redis():
   r = redis.StrictRedis().from_url(config['redis_url'])
   r.config_set('maxmemory', config['max_ram'])
   r.config_set('maxmemory-policy', 'noeviction')
-  r.flushdb()
+  r.delete('writelock')
   return r
 
 
@@ -210,21 +210,38 @@ def execute_pipe(table, pipeline):
     redis.Redis.pipeline pipeline: a pipe of commands to execute
   '''
   while True:
+    # if Redis is using too much RAM write to disk
+    if r.info()['used_memory_rss'] >= max_redis_bytes * .1:
+      save_redis_table(table)
+    # pipes empty on error, so execute on a copy
     try:
-      return pipeline.execute()
-    # if another process is writing, sleep, else write
-    except redis.exceptions.ResponseError:
-      # another process is writing; sleep and try again
-      if r.get('writelock').decode('utf-8') == 'true':
-        time.sleep(1)
-        continue
-      # no process is writing; appoint this process the writer
+      pipe = pipeline
+      pipe.execute()
+      break
+    # catch OOM from Redis
+    except Exception as exc:
+      print(' ! error occurred when executing pipe', err)
+
+
+def save_redis_table(table):
+  '''
+  Save all records in a redis table (i.e. all records whose
+  keys contain `table` as a prefix) to disk, then delete those
+  keys to free up RAM.
+  @params:
+    str table: the 'table' in which all pipeline records are stored
+  '''
+  try:
+    # dlm returns a Lock or False if a Lock already exists
+    lock = dlm.lock('writelock', 1000 * 100)
+    if lock:
       if table == 'hashband':
         write_redis_hashbands()
       elif table == 'candidates':
         write_redis_candidates()
-      # execute the pipe this process was sent to execute
-      return execute_pipe(table, pipeline)
+      dlm.unlock(lock)
+  except Exception as exc:
+    print(' ! error occurred when writing redis to disk', err)
 
 
 def write_redis_hashbands():
@@ -234,23 +251,24 @@ def write_redis_hashbands():
   @params:
     str table: the prefix added to all hashband keys
   '''
-  if redis_is_write_locked(): return
-  r.set('writelock', 'true')
   print(' * writing hashbands to disk')
+  pipe = r.pipeline()
+  keys = []
+  for i in r.keys('hashband-*'):
+    key = i.decode('utf8')
+    keys.append(key.split('hashband-')[1])
+    pipe.smembers(key).delete(key)
+  results = pipe.execute()
 
-  for k in r.keys('hashband-*'):
-    smembers, _ = r.pipeline().smembers(k).delete(k).execute()
-    smembers = [i.decode('utf-8') for i in smembers]
-    key = k.decode('utf-8').split('hashband-')[1]
-    # a and b represent the letters 0+1 and 2+3 in hashband
-    # these are used to create a simple tree structure on disk
-    # for quick hashband retrieval
+  # results stores [smembers, del, smembers, del] results
+  smember_results = [i for idx, i in enumerate(results) if idx%2 == 0]
+  for key, smembers in zip(keys, smember_results):
+    smembers = [i.decode('utf8') for i in smembers]
     a, b = key[0:2], key[2:4]
     out_dir = os.path.join(config['tmp'], 'hashbands', a, b)
     out_path = os.path.join(out_dir, a + b)
     make_dirs(out_dir)
     write(out_path, '#'.join(smembers) + '#')
-  r.set('writelock', 'false')
 
 
 def write_redis_candidates():
@@ -258,10 +276,7 @@ def write_redis_candidates():
   Perform atomic read + delete operation on all key / value
   pairs in the Redis candidates table.
   '''
-  if redis_is_write_locked(): return
-  r.set('writelock', 'true')
-  print('* writing match candidates to disk')
-
+  print(' * writing match candidates to disk')
   for k in r.keys('candidates-*'):
     smembers, _ = r.pipeline().smembers(k).delete(k).execute()
     smembers = [i.decode('utf-8') for i in smembers]
@@ -272,14 +287,33 @@ def write_redis_candidates():
     write(out_path, '#'.join(smembers) + '#')
 
 
-def redis_is_write_locked():
+def parse_redis_url():
   '''
-  Determine whether a process is currently writing to Redis.
+  Parse config.redis_url into host, port, and db args,
+  and return a dictionary containing each value
   '''
-  result = r.get('writelock')
-  if result and result.decode('utf-8') == 'true':
-    return True
-  return False
+  return {
+    'host': config['redis_url'].split('redis://')[1].split(':')[0],
+    'port': config['redis_url'].split(':')[2].split('/')[0],
+    'db':   config['redis_url'].split('/')[-1],
+  }
+
+
+def get_max_redis_ram():
+  '''
+  Return the max number of bytes Redis can use
+  '''
+  max_human = config['max_ram']
+  if 'gb' in max_human:
+    base = 'gb'
+    multiplier = 1000 * 1000 * 1000
+  elif 'mb' in max_human:
+    base = 'mb'
+    multiplier = 1000 * 1000
+  elif 'kb' in max_human:
+    base = 'kb'
+    multiplier = 1000
+  return float(max_human.replace(base, '')) * multiplier
 
 
 def save(table_name, obj):
@@ -329,3 +363,5 @@ config = get_config()
 infiles = glob(config['infiles'])
 text_ids = [str(i) for i in range(len(infiles))]
 r = get_redis()
+dlm = Redlock([parse_redis_url()])
+max_redis_bytes = get_max_redis_ram()
