@@ -13,12 +13,23 @@ This application uses MongoDB as a database. You can install and start MongoDB o
 brew install mongodb
 brew services start mongodb
 ```
+For Ubuntu 16.0.4 LTS:
+```
+sudo apt install mongodb
+sudo systemctl start mongodb
+```
 
 This app also uses Node.js as a web server. You can install Node on OSX with the following command:
 
 ```
 brew install node
 ```
+For Ubuntu 16.0.4 LTS:
+```
+sudo apt install nodejs
+sudo apt install nodejs-legacy  
+```
+(The last of these ensures /usr/bin/node actually calls /usr/bin/nodejs, which is required for the version of webpack used here.)
 
 ## Quickstart
 
