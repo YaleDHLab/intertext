@@ -38,7 +38,14 @@ if not infiles: raise Exception('No input files were found!')
 
 app = Celery('tasks',
   backend=config['redis_url'],
-  broker=config['redis_url'])
+  broker=config['redis_url']
+)
+
+app.conf.update(
+  worker_prefetch_multiplier=3,
+  broker_heartbeat=120,
+  broker_heartbeat_checkrate=60
+)
 
 ##
 # 1) Hash input texts
