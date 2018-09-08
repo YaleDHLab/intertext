@@ -69,6 +69,8 @@ def hash_input_file(text_id):
   # add each hashband transaction to the pipeline
   for window_id, window in enumerate(get_windows(text_path)):
     for hashband in get_hashbands(window):
+      # use the first four characters from the hashband
+      # for lossier storage (e.g. key would be hashband-5012)
       a, b = hashband[0:2], hashband[2:4]
       key = table + '-' + a + b
       value = hashband + '-' + text_id + '.' + str(window_id)
