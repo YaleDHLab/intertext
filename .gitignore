@@ -6,4 +6,5 @@
 tmp
 node_modules
 build
+celery.logs
 __pycache__
