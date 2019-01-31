@@ -568,6 +568,7 @@ def validate_text_matches(args):
   '''
   match_file, process_id = args
   validated = ''
+  found = 0
   text_matches = get_text_matches(match_file)
   text_id = os.path.basename(match_file)
   text_windows = list( get_windows(infiles[int(text_id)]) )
@@ -582,6 +583,9 @@ def validate_text_matches(args):
         file_ids = text_id + '.' + str(text_window_id)
         match_ids = match_text_id + '.' + str(match_window_id)
         validated += file_ids + '-' + match_ids + '|' + str(similarity) + '#'
+        found += 1
+        if found % 100 == 0:
+          print(' * matches found for', match_file, found)
   save_validated_matches(text_id, validated, process_id)
 
 
@@ -636,7 +640,7 @@ def save_validated_matches(text_id, content, process_id):
   filename = text_id + '#' + str(process_id)
   if config['host_id']:
     filename += '#' + str(config['host_id'])
-  append(os.path.join(out_dir, text_id), content)
+  append(os.path.join(out_dir, filename), content)
 
 
 ##
