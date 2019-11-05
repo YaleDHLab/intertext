@@ -4,7 +4,7 @@ var path = require('path')
 var config = require('./config')
 
 // initialize mongoose
-const mongoose = require('./mongo')();
+const mongoose = require('./mongo').connection;
 
 // initialize server
 const app = require('./middleware')(express())

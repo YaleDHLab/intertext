@@ -2,16 +2,20 @@ var mongoose = require('mongoose');
 var models = require('./models/models');
 var config = require('./config');
 
-module.exports = () => {
-  mongoose.connect('mongodb://localhost/' + config.db, {
-    keepAlive: true,
-    reconnectTries: Number.MAX_VALUE,
-    useMongoClient: true
-  })
+var mongooseConfig = {
+  keepAlive: true,
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  reconnectTries: Number.MAX_VALUE,
+}
 
-  mongoose.connection.on('error', (err) => {
-    console.log(err)
-  })
+mongoose.connect('mongodb://localhost/' + config.db, mongooseConfig)
 
-  return mongoose;
+mongoose.connection.on('error', (err) => {
+  console.log(err)
+})
+
+module.exports = {
+  connection: mongoose,
+  config: mongooseConfig,
 }
