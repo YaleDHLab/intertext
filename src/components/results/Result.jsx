@@ -96,6 +96,7 @@ class Result extends React.Component {
         <div className='result-footer-container'>
           <div className='result-footer'>
             <a className='read'
+                target='_blank'
                 href={getHref(this.props.result, this.props.type)}>
               <ReadIcon />
               Read

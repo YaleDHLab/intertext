@@ -21,11 +21,10 @@ header {
 .brand {
   height: 20px;
   width: 112px;
-  padding: 10px;
   display: inline-block;
   vertical-align: middle;
   position: relative;
-  top: 24px;
+  top: 31px;
 }
 
 .brand img {

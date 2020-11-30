@@ -23,7 +23,7 @@ ChartLib.createBase = (elem, props) => {
 
   // Group container for svg children
   const g = svg.append('g').attr('class', 'group-container')
-  
+
   // Grid backgrounds
   if (props.drawGrid) {
     g.append('rect').attr('class', 'grid');
@@ -61,7 +61,6 @@ ChartLib.createBase = (elem, props) => {
 ChartLib.updateBase = (elem, _props) => {
   const props = curateProps(_props)
   const svg = d3.select(elem).select('svg')
-  svg.transition().duration(1000)
   setSvgSize(svg, props)
   transformGroupContainer(svg, props)
   transformXAxis(svg, props)
@@ -86,7 +85,7 @@ const transformGroupContainer = (svg, props) => {
 
 const transformXAxis = (svg, props) => {
   svg.select('.x.axis')
-    .attr('transform', 'translate(0,' + (props.height - props.margin.top - 
+    .attr('transform', 'translate(0,' + (props.height - props.margin.top -
         props.margin.bottom) + ')');
 }
 

@@ -37,7 +37,7 @@
   position: absolute;
   padding: 10px 20px;
   background: #fff;
-  margin: 35px 0 0 90px;
+  margin: 35px 0 0 70px;
   border-radius: 3px;
   border: 1px solid #95989A;
   z-index: 1;
@@ -46,6 +46,7 @@
   font-size: .8em;
   max-height: 164px;
   overflow: auto;
+  min-width: 260px;
 }
 
 input:focus + .typeahead-results {
@@ -101,6 +102,7 @@ input:focus + .typeahead-results {
   background-position: 83%;
   border-top-left-radius: 8px;
   border-bottom-left-radius: 8px;
+  left: -12px;
 }
 
 /* browser select reset */
