@@ -14,14 +14,11 @@ class SortResults extends React.Component {
 
   render() {
     return (
-      <div className='sort-results'>
-        <select value={this.props.sort}
-            onChange={this.handleChange}>
-          <option value='author'>Author</option>
-          <option value='year'>Publication Year</option>
-          <option value='similarity'>Similarity</option>
-        </select>
-      </div>
+      <select className='sort-results' value={this.props.sort} onChange={this.handleChange}>
+        <option value='author'>Author</option>
+        <option value='year'>Publication Year</option>
+        <option value='similarity'>Similarity</option>
+      </select>
     )
   }
 }
