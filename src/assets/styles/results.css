@@ -142,6 +142,7 @@
 .result-top {
   border-bottom: 1px solid #E0E0E0;
   overflow: hidden;
+  height: 32px;
 }
 
 .result-title,
@@ -156,9 +157,9 @@
   color: #666666;
   max-width: calc(100% - 115px);
   overflow: hidden;
+  white-space: nowrap;
   line-height: 1.2em;
-  max-height: .9em;
-  font-family: OpenSans;
+  font-family: 'Open Sans';
   font-style: italic;
 }
 

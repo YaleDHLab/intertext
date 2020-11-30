@@ -5,7 +5,7 @@
 .sort-results {
   background: url(../images/icons/down-caret-gray.png);
   background-repeat: no-repeat;
-  background-size: 11%;
+  background-size: 7%;
   background-position-x: 94%;
   background-position-y: 59%;
   height: 26px;
@@ -20,22 +20,13 @@
   border: 2px solid #ebebeb;
   position: relative;
   top: 12px;
-  padding: 2px;
+  padding: 2px 10px;
   float: right;
-}
-
-.sort-results select {
-  background: transparent;
-  border: none;
+  width: 175px;
+  -webkit-appearance: none;
+  position: relative;
+  outline: none;
   font-size: .8em;
   font-weight: 600;
   color: #666666;
-  height: 26px;
-  padding: 5px;
-  width: 175px;
-  -webkit-appearance: none;
-}
-
-.sort-results select:focus {
-  outline: none;
 }
