@@ -1,7 +1,7 @@
 # Intertext
 > Detect and visualize text reuse within collections of plain text or XML documents.
 
-Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components.
+Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components. [[Demo](https://bit.ly/intertext-demo)]
 
 ![App preview](/src/assets/images/preview.png?raw=true)
 
@@ -27,7 +27,7 @@ brew install node
 For Ubuntu 16.0.4 LTS:
 ```
 sudo apt install nodejs
-sudo apt install nodejs-legacy  
+sudo apt install nodejs-legacy
 ```
 (The last of these ensures /usr/bin/node actually calls /usr/bin/nodejs, which is required for the version of webpack used here.)
 
