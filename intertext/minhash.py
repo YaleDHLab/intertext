@@ -1012,7 +1012,7 @@ def create_collections():
 
 def get_config():
   defaults = {
-    'max_cores': cpu_count()-2,
+    'max_cores': max(cpu_count()-2, 1),
     'encoding': 'utf8',
     'xml_tag': False,
     'step': 4,
