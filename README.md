@@ -1,4 +1,5 @@
 # Intertext
+
 > Detect and visualize text reuse within collections of plain text or XML documents.
 
 Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components. [[Demo](https://bit.ly/intertext-demo)]
@@ -7,100 +8,74 @@ Intertext combines machine learning with interactive data visualizations to surf
 
 ## Dependencies
 
-You may wish to use a package management and virtual environment system such as [Anaconda](https://www.anaconda.com/products/individual) for Intertext. Once Anaconda is installed, you can create a specific environment for it like this:
+To get started, you'll need to install [Anaconda](https://www.anaconda.com/products/individual). Once Anaconda is installed, we can create a virtual environment, activate that environment, and install dependencies into that environment with the following steps:
 
-`conda create --name intertext python=3.6`
+```bash
+# create a virtual environment
+conda create --name intertext python=3.6
 
-
-Next, activate this new environment:
-
-`conda activate intertext`
-
-Create a directory to hold the intertext code, database storage, and your source texts:
-
-```
-mkdir intertext_directory
-cd intertext_directory
-mkdir mongodata
-```
-
-Use Anaconda to install MongoDB:
-
-`conda install -c anaconda mongodb`
-
-Finally, start MongoDB with an option to use a local data folder for storage:
-
-`mongod --dbpath ./mongodata`
-
-Leave this shell running for as long as you are exploring Intertext.  In another terminal shell, activate the environment again:
-
-```
+# activate the environment
 conda activate intertext
-cd intertext_directory
-conda install nodejs
+
+# install mongodb and nodejs
+conda install -c anaconda mongodb nodejs
 ```
 
-Now we'll pull the latest version of the Intertext code:
+Next let's make a folder that will store our MongoDB data and let's start the MongoDB daemon process:
 
-`git clone https://github.com/YaleDHLab/intertext`
+```bash
+# make the data folder for MongoDB
+mkdir mongodata
 
-...and install the requirements:
-
-### Ubuntu only:
-`sudo apt-get install libxml2-dev libxslt1-dev`
-
-### Continuing...
+# start the mongodb daemon using the data folder we just made for storage
+mongod --dbpath ./mongodata
 ```
-cd intertext
+
+You should leave that process running while you are using Intertext. In another terminal, you should then copy the latest Intertext source code and install the code-level dependencies:
+
+```bash
+# activate the virtual environment in your new terminal
+conda activate intertext
+
+# clone down the application source
+git clone https://github.com/YaleDHLab/intertext
+
+# install the python dependencies
 pip install -r requirements.txt
+
+# install the node dependencies
 npm install --no-optional
 ```
 
-## Notes for Ubuntu 16.0.4 LTS:
+## Usage
 
-You can also use system-level MongoDB instead of the Conda-provided one:
-```
-sudo apt install mongodb
-sudo systemctl start mongodb
-```
+Once the dependencies outlined above are installed, make sure you are in the `intertext/` folder, and then detect reuse in the included sample documents by running:
 
-If you encounter problems with Conda-provided node, you can try:
-```
-sudo apt install nodejs
-sudo apt install nodejs-legacy
-```
-(The last of these ensures /usr/bin/node actually calls /usr/bin/nodejs, which is required for the version of webpack used here.)
-
-## Quickstart
-
-Once the dependencies outlined above are installed, make sure you are in the `intertext_directory/intertext/` folder, and then run:
-
-```
+```bash
 python intertext/minhash.py
 ```
-...to detect reuse in the included sample documents.
 
-To visualize the results, type:
-```
+To visualize the results, you can start a local web server by running:
+
+```bash
 npm run production
 ```
-...to start a local web server.
 
 If you open a web browser to `localhost:7092`, you will be able to browse discovered intertexts.
 
-## Discovering Text Reuse
+## Using Custom Text Files
 
-To discover text reuse in your own text files, install the app dependencies (see above), then replace the files in `data/texts` with your text files and replace the metadata file in `data/metadata` with a new metadata file. Make sure your new text files and metadata files are in the same format as the sample text and metadata files.
+To discover text reuse in your own text files, install the dependencies (see above), then replace the files in `data/texts` with your text files and replace the metadata file in `data/metadata` with a new metadata file. Make sure your new text files and metadata files are in the same format as the sample text and metadata files.
 
 Once your files are in place, you can identify intertexts in the data by running:
 
-```
+```bash
 npm run detect-reuse
 ```
 
 After processing your texts, you can examine the discovered text reuse by running:
 
-```
+```bash
 npm run production
 ```
 
@@ -200,11 +175,11 @@ The following covers steps you can take to deploy this application on an Amazon 
 
 While creating the instance, add the following Custom TCP Ports to the default security settings:
 
-| Port Range  | Source | Description |
-| ----------- | ------ | ----------- |
-| 80 | 0.0.0.0/0, ::/0 | HTTP |
-| 443 | 0.0.0.0/0, ::/0 | HTTPS |
-| 27017 | 0.0.0.0/0, ::/0 | MongoDB |
+| Port Range  | Source          | Description |
+| ----------- | --------------- | ----------- |
+| 80          | 0.0.0.0/0, ::/0 | HTTP        |
+| 443         | 0.0.0.0/0, ::/0 | HTTPS       |
+| 27017       | 0.0.0.0/0, ::/0 | MongoDB     |
 
 After creating and ssh-ing to the instance, you can install all application dependencies, process the sample data, and start the web server with the following commands.
 
@@ -285,3 +260,14 @@ sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 7092
 ```
 
 Then users can see your application at http://YOUR_INSTANCE_IP without having to state a port.
+
+## Ubuntu Troubleshooting
+
+If you are on Ubuntu and encounter difficulties with the Conda-provided Node, you can try:
+
+```bash
+sudo apt install nodejs
+sudo apt install nodejs-legacy
+```
+
+(The last of these ensures /usr/bin/node actually calls /usr/bin/nodejs, which is required for the version of webpack used here.)
