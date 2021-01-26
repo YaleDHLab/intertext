@@ -46,6 +46,10 @@ Now we'll pull the latest version of the Intertext code:
 
 ...and install the requirements:
 
+### Ubuntu only:
+`sudo apt-get install libxml2-dev libxslt1-dev`
+
+### Continuing...
 ```
 cd intertext
 pip install -r requirements.txt
