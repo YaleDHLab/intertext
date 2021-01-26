@@ -9,57 +9,48 @@ Intertext combines machine learning with interactive data visualizations to surf
 
 You may wish to use a package management and virtual environment system such as [Anaconda](https://www.anaconda.com/products/individual) for Intertext. Once Anaconda is installed, you can create a specific environment for it like this:
 
-``
-conda create --name intertext python=3.6
-``
+`conda create --name intertext python=3.6`
+
 
 Next, activate this new environment:
 
-``
-conda activate intertext
-``
+`conda activate intertext`
 
 Create a directory to hold the intertext code, database storage, and your source texts:
 
-``
+```
 mkdir intertext_directory
 cd intertext_directory
 mkdir mongodata
-``
+```
 
 Use Anaconda to install MongoDB:
 
-``
-conda install -c anaconda mongodb
-``
+`conda install -c anaconda mongodb`
 
 Finally, start MongoDB with an option to use a local data folder for storage:
 
-``
-mongod --dbpath ./mongodata
-``
+`mongod --dbpath ./mongodata`
 
 Leave this shell running for as long as you are exploring Intertext.  In another terminal shell, activate the environment again:
 
-``
+```
 conda activate intertext
 cd intertext_directory
 conda install nodejs
-``
+```
 
 Now we'll pull the latest version of the Intertext code:
 
-``
-git clone https://github.com/YaleDHLab/intertext
-``
+`git clone https://github.com/YaleDHLab/intertext`
 
 ...and install the requirements:
 
-``
+```
 cd intertext
 pip install -r requirements.txt
 npm install --no-optional
-``
+```
 
 ## Notes for Ubuntu 16.0.4 LTS:
 
