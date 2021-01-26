@@ -7,24 +7,55 @@ Intertext combines machine learning with interactive data visualizations to surf
 
 ## Dependencies
 
-This application uses MongoDB as a database. You can install and start MongoDB on OSX with the following:
+You may wish to use a package management and virtual environment system such as [Anaconda](https://www.anaconda.com/products/individual) for Intertext. Once Anaconda is installed, you can create a specific environment for it like this:
 
-```
-brew install mongodb
-brew services start mongodb
-```
-For Ubuntu 16.0.4 LTS:
+``
+conda create --name intertext python=3.6
+``
+Next, activate this new environment:
+``
+conda activate intertext
+``
+Create a directory to hold the intertext code, database storage, and your source texts:
+``
+mkdir intertext_directory
+cd intertext_directory
+mkdir mongodata
+``
+Use Anaconda to install MongoDB:
+``
+conda install -c anaconda mongodb
+``
+Finally, start MongoDB with an option to use a local data folder for storage:
+``
+mongod --dbpath ./mongodata
+``
+Leave this shell running for as long as you are exploring Intertext.  In another terminal shell, activate the environment again:
+``
+conda activate intertext
+cd intertext_directory
+conda install nodejs
+``
+Now we'll pull the latest version of the Intertext code:
+``
+git clone https://github.com/YaleDHLab/intertext
+``
+...and install the requirements:
+``
+cd intertext
+pip install -r requirements.txt
+npm install --no-optional
+``
+
+## Notes for Ubuntu 16.0.4 LTS:
+
+You can also use system-level MongoDB instead of the Conda-provided one:
 ```
 sudo apt install mongodb
 sudo systemctl start mongodb
 ```
 
-This app also uses Node.js as a web server. You can install Node on OSX with the following command:
-
-```
-brew install node
-```
-For Ubuntu 16.0.4 LTS:
+If you encounter problems with Conda-provided node, you can try:
 ```
 sudo apt install nodejs
 sudo apt install nodejs-legacy
@@ -33,24 +64,18 @@ sudo apt install nodejs-legacy
 
 ## Quickstart
 
-Once the dependencies outlined above are installed, you can run:
+Once the dependencies outlined above are installed, make sure you are in the `intertext_directory/intertext/` folder, and then run:
 
 ```
-# clone the application source code
-git clone https://github.com/YaleDHLab/intertext
-
-# install the Python dependencies
-cd intertext && pip install -r requirements.txt --user
-
-# install the node dependencies
-npm install --no-optional
-
-# detect reuse in the included sample documents
 python intertext/minhash.py
+```
+...to detect reuse in the included sample documents.
 
-# start the web server
+To visualize the results, type:
+```
 npm run production
 ```
+...to start a local web server.
 
 If you open a web browser to `localhost:7092`, you will be able to browse discovered intertexts.
 
