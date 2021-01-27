@@ -347,7 +347,10 @@ def get_text_content(s):
   '''
   if config['xml_tag']:
     parser = 'html.parser' if infiles[0].split('.')[-1] == '.html' else 'lxml'
-    return BeautifulSoup(s, parser).find(config['xml_tag']).get_text()
+    soup = BeautifulSoup(s, parser)
+    for tag in config.get('tags_to_strip', []):
+      [i.extract() for i in soup.find_all(tag)]
+    return soup.find(config['xml_tag']).get_text()
   return s
 
 
