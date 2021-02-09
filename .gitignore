@@ -1,0 +1,4 @@
+*.pyc
+*.pem
+*.DS_Store
+intertext/output
