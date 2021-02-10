@@ -10,7 +10,8 @@ import json
 import os
 
 config = {
-  'infiles': [],
+  'infile_glob': [],
+  'metadata': '',
   'encoding': 'utf8',
   'window_length': 14,
   'slide_length': 4,
@@ -24,7 +25,8 @@ def parse():
   '''Parse the command line arguments and initialize text processing'''
   description = 'Discover and visualize text reuse'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--infiles', '-i', type=str, default=config['infiles'], help='path to a glob of text files to process', required=True)
+  parser.add_argument('--infiles', '-i', type=str, default=config['infile_glob'], dest='infile_glob', help='path to a glob of text files to process', required=True)
+  parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a JSON metadata file (see README)', required=True)
   parser.add_argument('--encoding', '-e', type=str, default=config['encoding'], help='the encoding of infiles', required=False)
   parser.add_argument('--window_length', '-w', type=int, default=config['window_length'], help='the length of windows when processing files (see README)', required=False)
   parser.add_argument('--slide_length', '-l', type=int, default=config['slide_length'], help='the length to slide windows when processing files (see README)', required=False)
@@ -41,18 +43,23 @@ def process_texts(**kwargs):
     num_perm=kwargs['permutations'],
     weights=(1-kwargs['recall'], kwargs['recall']))
   # identify and store infiles
-  infiles = glob.glob(kwargs['infiles'])
+  infiles = glob.glob(kwargs['infile_glob'])
+  if len(infiles) == 0:
+    raise Exception('No infiles could be found!')
   if not os.path.exists('output'):
     os.makedirs('output')
   with open(os.path.join('output', 'files.json'), 'w') as out:
     json.dump(infiles, out)
+  # if the user provided metadata, store it in the kwargs
+  if kwargs.get('metadata'):
+    kwargs['metadata'] = json.load(open(kwargs['metadata']))
   # create minhashes
   print(' * creating minhashes')
   id_d = {} # d[window_id] = [file_id, window_index]
   minhash_d = {} # d[window_id] = minhash
   n = 0 # unique id for each window
   for file_idx, i in enumerate(infiles):
-    for window_idx, window in enumerate(get_windows(i, **kwargs)):
+    for window_idx, window in enumerate(get_windows(i, **get_cacheable(kwargs))):
       id_d[n] = [file_idx, window_idx]
       m = MinHash(num_perm=kwargs['permutations'])
       for w in ngrams(window, 3):
@@ -77,9 +84,9 @@ def process_texts(**kwargs):
   print(' * validating matches')
   matches_d = defaultdict(lambda: defaultdict(list))
   for file_id_a in candidate_d:
-    file_a_windows = list(get_windows(infiles[file_id_a], **kwargs))
+    file_a_windows = list(get_windows(infiles[file_id_a], **get_cacheable(kwargs)))
     for file_id_b in candidate_d[file_id_a]:
-      file_b_windows = list(get_windows(infiles[file_id_b], **kwargs))
+      file_b_windows = list(get_windows(infiles[file_id_b], **get_cacheable(kwargs)))
       for window_a, window_b in candidate_d[file_id_a][file_id_b]:
         text_a = file_a_windows[window_a]
         text_b = file_b_windows[window_b]
@@ -89,11 +96,93 @@ def process_texts(**kwargs):
   del candidate_d
   # cluster the matches
   print(' * clustering matches')
+  clusters = []
   for file_id_a in matches_d:
     for file_id_b in matches_d[file_id_a]:
+      # create d[file_a_window][file_b_window] = sim
+      d = defaultdict(lambda: defaultdict())
+      for a, b, sim in matches_d[file_id_a][file_id_b]:
+        d[a][b] = sim
+      # find sequences of windows in a and b
       window_as, window_bs, sims = zip(*matches_d[file_id_a][file_id_b])
-      # find sequences of windows in a and b; resume from get_clusters() in original
+      for a in get_sequences(window_as):
+        for b in get_sequences(window_bs):
+          cluster = {'a': [], 'b': [], 'sim': []}
+          for a_i in a:
+            for b_i in b:
+              try:
+                sim = d[a_i][b_i]
+                if not sim: continue
+                cluster['a'].append(a_i)
+                cluster['b'].append(b_i)
+                cluster['sim'].append(sim)
+              except KeyError:
+                pass
+          if cluster['a'] and cluster['b']:
+            clusters.append({
+              'a': sorted( list( set( cluster['a'] ) ) ),
+              'b': sorted( list( set( cluster['b'] ) ) ),
+              'sim': round( sum(cluster['sim']) / len(cluster['sim']), 2)
+            })
+      # format the clusters for the current file pair
+      matches = format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs)
 
+def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
+  '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
+  if file_id_a == file_id_b: return
+  a_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_a]), {})
+  b_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_b]), {})
+  # set a equal to the record pubished first
+  if a_meta and b_meta and b_meta.get('year') < a_meta.get('year'):
+    old_a = file_id_a
+    old_b = file_id_b
+    file_id_b = file_id_a
+    file_id_a = file_id_b
+    a_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_a]), {})
+    b_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_b]), {})
+  # format the matches
+  a_words = get_words(infiles[file_id_a], **get_cacheable(kwargs))
+  b_words = get_words(infiles[file_id_b], **get_cacheable(kwargs))
+  formatted = []
+  for c in clusters:
+    a_strings = get_match_strings(a_words, c['a'], **get_cacheable(kwargs))
+    b_strings = get_match_strings(b_words, c['b'], **get_cacheable(kwargs))
+    formatted.append({
+      'similarity': c['sim'],
+      'source_file_id': int(file_id_a),
+      'target_file_id': int(file_id_b),
+      'source_segment_ids': c['a'],
+      'target_segment_ids': c['b'],
+      'source_filename': os.path.basename(infiles[file_id_a]),
+      'target_filename': os.path.basename(infiles[file_id_b]),
+      'source_file_path': infiles[file_id_a],
+      'target_file_path': infiles[file_id_b],
+      'source_prematch': a_strings['prematch'],
+      'target_prematch': b_strings['prematch'],
+      'source_match': a_strings['match'],
+      'target_match': b_strings['match'],
+      'source_postmatch': a_strings['postmatch'],
+      'target_postmatch': b_strings['postmatch'],
+      'source_year': a_meta.get('year', ''),
+      'target_year': b_meta.get('year', ''),
+      'source_author': a_meta.get('author', ''),
+      'target_author': b_meta.get('author', ''),
+      'source_title': a_meta.get('title', ''),
+      'target_title': b_meta.get('title', ''),
+      'source_url': a_meta.get('url', ''),
+      'target_url': b_meta.get('url', ''),
+    })
+  print(formatted)
+
+def get_match_strings(words, window_ids, **kwargs):
+  '''Given a list of words and window ids, format prematch, match, and postmatch strings for a match'''
+  start = min(window_ids) * kwargs['slide_length']
+  end = max(window_ids) * kwargs['slide_length'] + kwargs['window_length']
+  return {
+    'prematch': ' '.join(words[max(0, start-kwargs['window_length']):start]),
+    'match': ' '.join(words[start:end]),
+    'postmatch': ' '.join(words[end:end + kwargs['window_length']])
+  }
 
 def get_sequences(l):
   '''Given list of ints `l`, return [[integer sequence in l], [integer sequence in l]]'''
@@ -106,17 +195,30 @@ def get_sequences(l):
   return sequences
 
 @functools.lru_cache(maxsize=128)
-def get_windows(path, **kwargs):
+def get_words(path, **kwargs):
   '''Given a file path return a list of strings from that file'''
   with codecs.open(path, 'r', kwargs['encoding']) as f:
     f = f.read()
-  words = f.split()
+  return f.split()
+
+@functools.lru_cache(maxsize=128)
+def get_windows(path, **kwargs):
+  '''Given a file path return a list of strings from that file'''
+  words = get_words(path, **kwargs)
   l = []
   for idx, window in enumerate(list(ngrams(words, kwargs['window_length']))):
     if idx % kwargs['slide_length'] != 0:
       continue
     l.append(' '.join(window))
   return l
+
+def get_cacheable(kwargs):
+  '''Given a dictionary of kwargs return a dictionary with cacheable values retained'''
+  d = {}
+  for k in kwargs:
+    if not isinstance(kwargs[k], list) and not isinstance(kwargs[k], dict):
+      d[k] = kwargs[k]
+  return d
 
 if __name__ == '__main__':
   parse()
