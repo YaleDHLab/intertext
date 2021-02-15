@@ -5,6 +5,7 @@ from nltk import ngrams
 import functools
 import argparse
 import codecs
+import shutil
 import glob
 import json
 import os
@@ -17,9 +18,21 @@ config = {
   'slide_length': 4,
   'permutations': 256,
   'threshold': 0.5,
-  'similarity': 0.7,
-  'recall': 0.9,
+  'similarity': 0.5,
+  'recall': 0.95,
 }
+
+'''
+TODO:
+  * add max similarity to other files to disregard direct file copying
+  * add xml parsing (tag to parse, tags to exclude)
+  * add files from which matches should be blacklisted
+  * add flag to indicate if same-author matches are allowed
+  * add support for CSV metadata
+  * add removal of diacritics
+  * add support for xml + txt in same run
+  * add unique guid for each output set to avoid overwriting
+'''
 
 def parse():
   '''Parse the command line arguments and initialize text processing'''
@@ -42,12 +55,15 @@ def process_texts(**kwargs):
   lsh = MinHashLSH(threshold=kwargs['threshold'],
     num_perm=kwargs['permutations'],
     weights=(1-kwargs['recall'], kwargs['recall']))
+  # create the output directories
+  if os.path.exists('output'):
+    shutil.rmtree('output')
+  if not os.path.exists(os.path.join('output', 'matches')):
+    os.makedirs(os.path.join('output', 'matches'))
   # identify and store infiles
   infiles = glob.glob(kwargs['infile_glob'])
   if len(infiles) == 0:
     raise Exception('No infiles could be found!')
-  if not os.path.exists('output'):
-    os.makedirs('output')
   with open(os.path.join('output', 'files.json'), 'w') as out:
     json.dump(infiles, out)
   # if the user provided metadata, store it in the kwargs
@@ -96,9 +112,10 @@ def process_texts(**kwargs):
   del candidate_d
   # cluster the matches
   print(' * clustering matches')
-  clusters = []
+  formatted = []
   for file_id_a in matches_d:
     for file_id_b in matches_d[file_id_a]:
+      clusters = []
       # create d[file_a_window][file_b_window] = sim
       d = defaultdict(lambda: defaultdict())
       for a, b, sim in matches_d[file_id_a][file_id_b]:
@@ -126,6 +143,8 @@ def process_texts(**kwargs):
             })
       # format the clusters for the current file pair
       matches = format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs)
+      if matches: formatted.append(matches)
+  write_outputs(infiles, formatted)
 
 def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
   '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
@@ -136,8 +155,8 @@ def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
   if a_meta and b_meta and b_meta.get('year') < a_meta.get('year'):
     old_a = file_id_a
     old_b = file_id_b
-    file_id_b = file_id_a
-    file_id_a = file_id_b
+    file_id_b = old_a
+    file_id_a = old_b
     a_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_a]), {})
     b_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_b]), {})
   # format the matches
@@ -172,7 +191,7 @@ def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
       'source_url': a_meta.get('url', ''),
       'target_url': b_meta.get('url', ''),
     })
-  print(formatted)
+  return(formatted)
 
 def get_match_strings(words, window_ids, **kwargs):
   '''Given a list of words and window ids, format prematch, match, and postmatch strings for a match'''
@@ -219,6 +238,45 @@ def get_cacheable(kwargs):
     if not isinstance(kwargs[k], list) and not isinstance(kwargs[k], dict):
       d[k] = kwargs[k]
   return d
+
+def write_outputs(infiles, formatted):
+  '''Given a 2D list where sublists are matches between two texts, write all outputs'''
+  # write the subdirectories if necessary
+  for i in range(len(infiles)):
+    out = os.path.join('output', 'matches', str(i))
+    if not os.path.exists(out):
+      os.makedirs(out)
+  # create sets that store author and title lists
+  authors = set()
+  titles = set()
+  for idx, i in enumerate(formatted):
+    # add the authors and titles to the lists of authors/titles
+    authors.add(i[0]['source_author'])
+    authors.add(i[0]['target_author'])
+    titles.add(i[0]['source_title'])
+    titles.add(i[0]['target_title'])
+    # write the match into locations from which it can be queried - these will be combined below
+    with open(os.path.join('output', 'matches', str(i[0]['source_file_id']), str(idx)), 'w') as out:
+      json.dump(i, out)
+    with open(os.path.join('output', 'matches', str(i[0]['target_file_id']), str(idx)), 'w') as out:
+      json.dump(i, out)
+  # write the aggregated authors and titles
+  with open(os.path.join('output', 'authors.json'), 'w') as out:
+    json.dump(sorted(authors), out)
+  with open(os.path.join('output', 'titles.json'), 'w')  as out:
+    json.dump(sorted(titles), out)
+  # combine the files in each of the match directories - loop over types of output (file_id, author, title)
+  for i in glob.glob(os.path.join('output', 'matches', '*')):
+    file_id = os.path.split(i)[1]
+    l = []
+    for j in glob.glob(os.path.join(i, '*')):
+      with open(j) as f:
+        l += json.load(f)
+    # remove the uncombined matches
+    shutil.rmtree(i)
+    # write the combined matches
+    with open(os.path.join('output', 'matches', file_id + '.json'), 'w') as out:
+      json.dump(l, out)
 
 if __name__ == '__main__':
   parse()
