@@ -1,7 +1,9 @@
 from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
 from difflib import SequenceMatcher
+from functools import partial
 from nltk import ngrams
+import multiprocessing
 import functools
 import argparse
 import codecs
@@ -32,6 +34,7 @@ TODO:
   * add removal of diacritics
   * add support for xml + txt in same run
   * add unique guid for each output set to avoid overwriting
+  * add GPU acceleration for minhashing
 '''
 
 def parse():
@@ -49,6 +52,26 @@ def parse():
   parser.add_argument('--recall', '-r', type=int, default=config['recall'], help='the recall value to aim for when discovering matches', required=False)
   config.update(vars(parser.parse_args()))
   process_texts(**config)
+
+def minhash_file(args, **kwargs):
+  '''Given a file index and path, return [[file_idx, window_idx, Minhash]]'''
+  file_idx, file_path = args
+  l = []
+  for window_idx, window in enumerate(get_windows(file_path, **get_cacheable(kwargs))):
+    m = MinHash(num_perm=kwargs['permutations'])
+    for w in ngrams(window, 3):
+      m.update(''.join(w).encode('utf-8'))
+    l.append([file_idx, window_idx, m])
+  return l
+
+def minhash_files(file_paths, **kwargs):
+  '''Given a list of file paths, stream [file_id, window_idx, Minhash] objects'''
+  pool = multiprocessing.Pool()
+  l = [[idx, i] for idx, i in enumerate(file_paths)]
+  f = partial(minhash_file, **kwargs)
+  for file_result in pool.map(f, l):
+    for result in file_result:
+      yield result
 
 def process_texts(**kwargs):
   '''Process the user's texts using the specified params'''
@@ -74,15 +97,11 @@ def process_texts(**kwargs):
   id_d = {} # d[window_id] = [file_id, window_index]
   minhash_d = {} # d[window_id] = minhash
   n = 0 # unique id for each window
-  for file_idx, i in enumerate(infiles):
-    for window_idx, window in enumerate(get_windows(i, **get_cacheable(kwargs))):
-      id_d[n] = [file_idx, window_idx]
-      m = MinHash(num_perm=kwargs['permutations'])
-      for w in ngrams(window, 3):
-        m.update(''.join(w).encode('utf-8'))
-      minhash_d[n] = m
-      lsh.insert(n, m)
-      n += 1
+  for file_idx, window_idx, m in minhash_files(infiles, **kwargs):
+    id_d[n] = [file_idx, window_idx]
+    minhash_d[n] = m
+    lsh.insert(n, m)
+    n += 1
   # create the graph of all match candidates
   print(' * identifying match candidates')
   candidate_d = defaultdict(lambda: defaultdict(list))
@@ -241,6 +260,7 @@ def get_cacheable(kwargs):
 
 def write_outputs(infiles, formatted):
   '''Given a 2D list where sublists are matches between two texts, write all outputs'''
+  print(' * writing outputs')
   # write the subdirectories if necessary
   for i in range(len(infiles)):
     out = os.path.join('output', 'matches', str(i))
