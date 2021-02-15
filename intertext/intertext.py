@@ -1,7 +1,6 @@
 from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
 from difflib import SequenceMatcher
-from functools import partial
 from nltk import ngrams
 import multiprocessing
 import functools
@@ -68,7 +67,7 @@ def minhash_files(file_paths, **kwargs):
   '''Given a list of file paths, stream [file_id, window_idx, Minhash] objects'''
   pool = multiprocessing.Pool()
   l = [[idx, i] for idx, i in enumerate(file_paths)]
-  f = partial(minhash_file, **kwargs)
+  f = functools.partial(minhash_file, **kwargs)
   for file_result in pool.map(f, l):
     for result in file_result:
       yield result
