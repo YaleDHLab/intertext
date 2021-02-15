@@ -247,14 +247,14 @@ def write_outputs(infiles, formatted):
     if not os.path.exists(out):
       os.makedirs(out)
   # create sets that store author and title lists
-  authors = set()
-  titles = set()
+  authors = defaultdict(set)
+  titles = defaultdict(set)
   for idx, i in enumerate(formatted):
     # add the authors and titles to the lists of authors/titles
-    authors.add(i[0]['source_author'])
-    authors.add(i[0]['target_author'])
-    titles.add(i[0]['source_title'])
-    titles.add(i[0]['target_title'])
+    authors[i[0]['source_author']].add(i[0]['source_file_id'])
+    authors[i[0]['target_author']].add(i[0]['target_file_id'])
+    titles[i[0]['source_title']].add(i[0]['source_file_id'])
+    titles[i[0]['target_title']].add(i[0]['target_file_id'])
     # write the match into locations from which it can be queried - these will be combined below
     with open(os.path.join('output', 'matches', str(i[0]['source_file_id']), str(idx)), 'w') as out:
       json.dump(i, out)
@@ -262,9 +262,9 @@ def write_outputs(infiles, formatted):
       json.dump(i, out)
   # write the aggregated authors and titles
   with open(os.path.join('output', 'authors.json'), 'w') as out:
-    json.dump(sorted(authors), out)
+    json.dump({k: list(authors[k]) for k in authors}, out)
   with open(os.path.join('output', 'titles.json'), 'w')  as out:
-    json.dump(sorted(titles), out)
+    json.dump({k: list(titles[k]) for k in titles}, out)
   # combine the files in each of the match directories - loop over types of output (file_id, author, title)
   for i in glob.glob(os.path.join('output', 'matches', '*')):
     file_id = os.path.split(i)[1]
