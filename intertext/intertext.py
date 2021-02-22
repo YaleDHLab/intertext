@@ -7,6 +7,7 @@ import functools
 import argparse
 import codecs
 import shutil
+import uuid
 import glob
 import json
 import os
@@ -185,6 +186,7 @@ def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
     a_strings = get_match_strings(a_words, c['a'], **get_cacheable(kwargs))
     b_strings = get_match_strings(b_words, c['b'], **get_cacheable(kwargs))
     formatted.append({
+      '_id': str(uuid.uuid4()),
       'similarity': c['sim'],
       'source_file_id': int(file_id_a),
       'target_file_id': int(file_id_b),
@@ -296,6 +298,51 @@ def write_outputs(infiles, formatted):
     # write the combined matches
     with open(os.path.join('output', 'matches', file_id + '.json'), 'w') as out:
       json.dump(l, out)
+  del l
+  # write the scatterplot data
+  write_scatterplots(formatted)
+
+def write_scatterplots(formatted):
+  '''Given an array of formatted matches, write data for each scatterplot'''
+  out_dir = os.path.join('output', 'scatterplots')
+  if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+  for i in ['source', 'target']:
+    for j in ['segment_ids', 'file_id', 'author']:
+      for k in ['sum', 'mean']:
+        data_nest = defaultdict(list)
+        for l in formatted:
+          for r in l:
+            if j == 'segment_ids':
+              level = i + '.' + str(r[i + '_file_id']) + '.'
+              level += '.'.join( [str(m) for m in r[i + '_segment_ids']] )
+            else:
+              level = r[i + '_' + j]
+            # ensure the level (aka data key) is a string
+            if isinstance(level, list):
+              level = '.'.join([str(i) for i in level])
+            data_nest[level].append(r)
+        # format the scatterplot data
+        scatterplot_data = []
+        for level in data_nest:
+          sims = [o['similarity'] for o in data_nest[level]]
+          sim = sum(sims) if k == 'sum' else sum(sims) / len(sims)
+          o = data_nest[level][0]
+          scatterplot_data.append({
+            'type': i,
+            'unit': j,
+            'statistic': k,
+            'key': level,
+            'similarity': sim,
+            'title': o[i + '_title'],
+            'author': o[i + '_author'],
+            'match': o[i + '_match'],
+            'source_year': o['source_year'],
+            'target_year': o['target_year'],
+          })
+        # write the scatterplot data
+        with open(os.path.join(out_dir, '{}-{}-{}.json'.format(i, j, k)), 'w') as out:
+          json.dump(scatterplot_data, out)
 
 if __name__ == '__main__':
   parse()
