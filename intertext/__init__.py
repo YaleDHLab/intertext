@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from intertex.intertext import parse
+from intertext.intertext import parse
 
 # specify version number
 import pkg_resources

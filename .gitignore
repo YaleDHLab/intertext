@@ -1,5 +1,7 @@
 *.pyc
 *.pem
 *.DS_Store
+*.egg-info
+build
+dist
 output
-intertext/output
