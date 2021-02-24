@@ -84,7 +84,7 @@ def process_texts(**kwargs):
   if not os.path.exists(os.path.join('output', 'matches')):
     os.makedirs(os.path.join('output', 'matches'))
   # identify and store infiles
-  infiles = glob.glob(kwargs['infile_glob'])
+  infiles = sorted(glob.glob(kwargs['infile_glob']))
   if len(infiles) == 0:
     raise Exception('No infiles could be found!')
   with open(os.path.join('output', 'files.json'), 'w') as out:
@@ -170,7 +170,7 @@ def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
   if file_id_a == file_id_b: return
   a_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_a]), {})
   b_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_b]), {})
-  # set a equal to the record pubished first
+  # set `a` equal to the record pubished first
   if a_meta and b_meta and b_meta.get('year') < a_meta.get('year'):
     old_a = file_id_a
     old_b = file_id_b
@@ -178,6 +178,11 @@ def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
     file_id_a = old_b
     a_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_a]), {})
     b_meta = kwargs.get('metadata', {}).get(os.path.basename(infiles[file_id_b]), {})
+    for c in clusters:
+      a_windows = c['b']
+      b_windows = c['a']
+      c['b'] = a_windows
+      c['a'] = b_windows
   # format the matches
   a_words = get_words(infiles[file_id_a], **get_cacheable(kwargs))
   b_words = get_words(infiles[file_id_b], **get_cacheable(kwargs))
