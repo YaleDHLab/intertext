@@ -14,5 +14,5 @@ python setup.py install
 # Usage
 
 ```bash
-intertext --infiles "text_files/*"
+intertext --infiles "sample_data/texts/*.txt"
 ```

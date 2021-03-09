@@ -20,8 +20,9 @@ config = {
   'slide_length': 4,
   'permutations': 256,
   'threshold': 0.5,
-  'similarity': 0.5,
+  'min_sim': 0.5,
   'recall': 0.95,
+  'max_file_sim': 0.85,
 }
 
 '''
@@ -35,6 +36,7 @@ TODO:
   * add support for xml + txt in same run
   * add unique guid for each output set to avoid overwriting
   * add GPU acceleration for minhashing
+  * add sort by similarity
 '''
 
 def parse():
@@ -48,8 +50,9 @@ def parse():
   parser.add_argument('--slide_length', '-l', type=int, default=config['slide_length'], help='the length to slide windows when processing files (see README)', required=False)
   parser.add_argument('--permutations', '-p', type=int, default=config['permutations'], help='the number of permutation functions to use (see README)', required=False)
   parser.add_argument('--threshold', '-t', type=int, default=config['threshold'], help='the minhash threshold value (see README)', required=False)
-  parser.add_argument('--similarity', '-s', type=int, default=config['similarity'], help='the minimum similarity of matches to retain)', required=False)
+  parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
   parser.add_argument('--recall', '-r', type=int, default=config['recall'], help='the recall value to aim for when discovering matches', required=False)
+  parser.add_argument('--max_file_sim', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
   config.update(vars(parser.parse_args()))
   process_texts(**config)
 
@@ -126,7 +129,7 @@ def process_texts(**kwargs):
         text_a = file_a_windows[window_a]
         text_b = file_b_windows[window_b]
         sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio()
-        if sim > kwargs['similarity']:
+        if sim >= kwargs['min_sim']:
           matches_d[file_id_a][file_id_b].append([window_a, window_b, round(sim, 2)])
   del candidate_d
   # cluster the matches
@@ -134,6 +137,10 @@ def process_texts(**kwargs):
   formatted = []
   for file_id_a in matches_d:
     for file_id_b in matches_d[file_id_a]:
+      # skip same file matches
+      if file_id_a == file_id_b:
+        continue
+      # create list of clustered matches between these two files
       clusters = []
       # create d[file_a_window][file_b_window] = sim
       d = defaultdict(lambda: defaultdict())
@@ -160,6 +167,16 @@ def process_texts(**kwargs):
               'b': sorted( list( set( cluster['b'] ) ) ),
               'sim': round( sum(cluster['sim']) / len(cluster['sim']), 2)
             })
+      # skip filewise comparison if the files are too similar
+      if kwargs['max_file_sim']:
+        a_matches = [j for i in clusters for j in i['a']]
+        b_matches = [j for i in clusters for j in i['b']]
+        a_windows = get_windows(infiles[file_id_a], **get_cacheable(kwargs))
+        b_windows = get_windows(infiles[file_id_b], **get_cacheable(kwargs))
+        if len(a_matches) >= (len(a_windows) * kwargs['max_file_sim']) or \
+           len(b_matches) >= (len(b_windows) * kwargs['max_file_sim']):
+          print(' *', infiles[file_id_a], 'and', infiles[file_id_b], 'have similarity >= max_file_sim; skipping!')
+          continue
       # format the clusters for the current file pair
       matches = format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs)
       if matches: formatted.append(matches)
