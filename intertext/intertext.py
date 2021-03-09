@@ -4,7 +4,10 @@ from difflib import SequenceMatcher
 from nltk import ngrams
 import multiprocessing
 import functools
+import distutils
+import requests
 import argparse
+import zipfile
 import codecs
 import shutil
 import uuid
@@ -14,6 +17,7 @@ import os
 
 config = {
   'infile_glob': [],
+  'output': 'output',
   'metadata': {},
   'encoding': 'utf8',
   'window_length': 14,
@@ -23,11 +27,12 @@ config = {
   'min_sim': 0.5,
   'recall': 0.95,
   'max_file_sim': 0.85,
+  'client': '0.0.1a',
+  'update_client': False,
 }
 
 '''
 TODO:
-  * add max similarity to other files to disregard direct file copying
   * add xml parsing (tag to parse, tags to exclude)
   * add files from which matches should be blacklisted
   * add flag to indicate if same-author matches are allowed
@@ -38,6 +43,9 @@ TODO:
   * add GPU acceleration for minhashing
   * add sort by similarity
 '''
+
+source_location = os.path.dirname(os.path.realpath(__file__))
+client_location = os.path.join(source_location, 'client')
 
 def parse():
   '''Parse the command line arguments and initialize text processing'''
@@ -53,8 +61,41 @@ def parse():
   parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
   parser.add_argument('--recall', '-r', type=int, default=config['recall'], help='the recall value to aim for when discovering matches', required=False)
   parser.add_argument('--max_file_sim', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
+  parser.add_argument('--output', '-o', type=str, default=config['output'], help='the output location', required=False)
+  parser.add_argument('--client', '-c', type=str, default=config['client'], help='the client version to fetch and display', required=False)
+  parser.add_argument('--update_client', default=config['update_client'], help='boolean indicating whether to update the stored client', required=False, action='store_true')
   config.update(vars(parser.parse_args()))
+  if config['update_client']: remove_client(**config)
+  download_client(**config)
   process_texts(**config)
+
+def remove_client(**kwargs):
+  '''Remove the cached client so it will be fetched afresh'''
+  print(' * clearing cached client')
+  if os.path.exists(os.path.join(source_location, 'client')):
+    shutil.rmtree(client_location)
+
+def download_client(**kwargs):
+  '''Download the client to the cache (if necessary) and copy to the output directory'''
+  if not os.path.exists(client_location):
+    print(' * fetching client version {}'.format(kwargs['client']))
+    os.makedirs(client_location)
+    zip_location = os.path.join(client_location, 'client.zip')
+    # download the zip archive
+    with open(zip_location, 'wb') as out:
+      url = 'https://lab-apps.s3-us-west-2.amazonaws.com/intertext-builds/intertext-client-{}.zip'.format(kwargs['client'])
+      out.write(requests.get(url).content)
+    # extract the zip archive
+    with zipfile.ZipFile(zip_location, 'r') as z:
+      z.extractall(client_location)
+    # if there were any matches in the build directory, remove them
+    former_api_location = os.path.join(client_location, 'build', 'api')
+    if os.path.exists(former_api_location):
+      shutil.rmtree(former_api_location)
+  # copy the `build` directory to the output directory
+  if os.path.exists(kwargs['output']):
+    shutil.rmtree(kwargs['output'])
+  shutil.copytree(os.path.join(client_location, 'build'), kwargs['output'])
 
 def minhash_file(args, **kwargs):
   '''Given a file index and path, return [[file_idx, window_idx, Minhash]]'''
@@ -82,15 +123,13 @@ def process_texts(**kwargs):
     num_perm=kwargs['permutations'],
     weights=(1-kwargs['recall'], kwargs['recall']))
   # create the output directories
-  if os.path.exists('output'):
-    shutil.rmtree('output')
-  if not os.path.exists(os.path.join('output', 'matches')):
-    os.makedirs(os.path.join('output', 'matches'))
+  if not os.path.exists(os.path.join(kwargs['output'], 'api', 'matches')):
+    os.makedirs(os.path.join(kwargs['output'], 'api', 'matches'))
   # identify and store infiles
   infiles = sorted(glob.glob(kwargs['infile_glob']))
   if len(infiles) == 0:
     raise Exception('No infiles could be found!')
-  with open(os.path.join('output', 'files.json'), 'w') as out:
+  with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
     json.dump(infiles, out)
   # if the user provided metadata, store it in the kwargs
   if kwargs.get('metadata'):
@@ -175,12 +214,12 @@ def process_texts(**kwargs):
         b_windows = get_windows(infiles[file_id_b], **get_cacheable(kwargs))
         if len(a_matches) >= (len(a_windows) * kwargs['max_file_sim']) or \
            len(b_matches) >= (len(b_windows) * kwargs['max_file_sim']):
-          print(' *', infiles[file_id_a], 'and', infiles[file_id_b], 'have similarity >= max_file_sim; skipping!')
+          print(' *', infiles[file_id_a], 'and', infiles[file_id_b], 'have similarity >= max_file_sim -- skipping!')
           continue
       # format the clusters for the current file pair
       matches = format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs)
       if matches: formatted.append(matches)
-  write_outputs(infiles, formatted)
+  write_outputs(infiles, formatted, **kwargs)
 
 def format_matches(file_id_a, file_id_b, clusters, infiles, **kwargs):
   '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
@@ -281,12 +320,12 @@ def get_cacheable(kwargs):
       d[k] = kwargs[k]
   return d
 
-def write_outputs(infiles, formatted):
+def write_outputs(infiles, formatted, **kwargs):
   '''Given a 2D list where sublists are matches between two texts, write all outputs'''
-  print(' * writing outputs')
+  print(' * writing outputs to "{}"'.format(kwargs['output']))
   # write the subdirectories if necessary
   for i in range(len(infiles)):
-    out = os.path.join('output', 'matches', str(i))
+    out = os.path.join(kwargs['output'], 'api', 'matches', str(i))
     if not os.path.exists(out):
       os.makedirs(out)
   # create sets that store author and title lists
@@ -299,17 +338,17 @@ def write_outputs(infiles, formatted):
     titles[i[0]['source_title']].add(i[0]['source_file_id'])
     titles[i[0]['target_title']].add(i[0]['target_file_id'])
     # write the match into locations from which it can be queried - these will be combined below
-    with open(os.path.join('output', 'matches', str(i[0]['source_file_id']), str(idx)), 'w') as out:
+    with open(os.path.join(kwargs['output'], 'api', 'matches', str(i[0]['source_file_id']), str(idx)), 'w') as out:
       json.dump(i, out)
-    with open(os.path.join('output', 'matches', str(i[0]['target_file_id']), str(idx)), 'w') as out:
+    with open(os.path.join(kwargs['output'], 'api', 'matches', str(i[0]['target_file_id']), str(idx)), 'w') as out:
       json.dump(i, out)
   # write the aggregated authors and titles
-  with open(os.path.join('output', 'authors.json'), 'w') as out:
+  with open(os.path.join(kwargs['output'], 'api', 'authors.json'), 'w') as out:
     json.dump({k: list(authors[k]) for k in authors}, out)
-  with open(os.path.join('output', 'titles.json'), 'w')  as out:
+  with open(os.path.join(kwargs['output'], 'api', 'titles.json'), 'w')  as out:
     json.dump({k: list(titles[k]) for k in titles}, out)
   # combine the files in each of the match directories - loop over types of output (file_id, author, title)
-  for i in glob.glob(os.path.join('output', 'matches', '*')):
+  for i in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
     file_id = os.path.split(i)[1]
     l = []
     for j in glob.glob(os.path.join(i, '*')):
@@ -318,15 +357,15 @@ def write_outputs(infiles, formatted):
     # remove the uncombined matches
     shutil.rmtree(i)
     # write the combined matches
-    with open(os.path.join('output', 'matches', file_id + '.json'), 'w') as out:
+    with open(os.path.join(kwargs['output'], 'api', 'matches', file_id + '.json'), 'w') as out:
       json.dump(l, out)
   del l
   # write the scatterplot data
-  write_scatterplots(formatted)
+  write_scatterplots(formatted, **kwargs)
 
-def write_scatterplots(formatted):
+def write_scatterplots(formatted, **kwargs):
   '''Given an array of formatted matches, write data for each scatterplot'''
-  out_dir = os.path.join('output', 'scatterplots')
+  out_dir = os.path.join(kwargs['output'], 'api', 'scatterplots')
   if not os.path.exists(out_dir):
     os.makedirs(out_dir)
   for i in ['source', 'target']:

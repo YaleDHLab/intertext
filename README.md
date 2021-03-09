@@ -14,5 +14,5 @@ python setup.py install
 # Usage
 
 ```bash
-intertext --infiles "sample_data/texts/*.txt"
+intertext --infiles "sample_data/texts/*.txt" --metadata "sample_data/metadata.json" --update_client
 ```
