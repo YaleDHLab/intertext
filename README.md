@@ -14,5 +14,9 @@ python setup.py install
 # Usage
 
 ```bash
+# create output
 intertext --infiles "sample_data/texts/*.txt" --metadata "sample_data/metadata.json" --update_client
+
+# serve output
+cd output && python -m http.server
 ```
