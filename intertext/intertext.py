@@ -33,6 +33,7 @@ config = {
 
 '''
 TODO:
+  * add --in_memory flag else write data to disk
   * add xml parsing (tag to parse, tags to exclude)
   * add files from which matches should be blacklisted
   * add flag to indicate if same-author matches are allowed
@@ -116,6 +117,8 @@ def minhash_files(file_paths, **kwargs):
   for file_result in pool.map(f, l):
     for result in file_result:
       yield result
+  pool.close()
+  pool.join()
 
 def process_texts(**kwargs):
   '''Process the user's texts using the specified params'''
@@ -123,8 +126,9 @@ def process_texts(**kwargs):
     num_perm=kwargs['permutations'],
     weights=(1-kwargs['recall'], kwargs['recall']))
   # create the output directories
-  if not os.path.exists(os.path.join(kwargs['output'], 'api', 'matches')):
-    os.makedirs(os.path.join(kwargs['output'], 'api', 'matches'))
+  for i in ['matches', 'scatterplots', 'indices']:
+    if not os.path.exists(os.path.join(kwargs['output'], 'api', i)):
+      os.makedirs(os.path.join(kwargs['output'], 'api', i))
   # identify and store infiles
   infiles = sorted(glob.glob(kwargs['infile_glob']))
   if len(infiles) == 0:
@@ -360,14 +364,27 @@ def write_outputs(infiles, formatted, **kwargs):
     with open(os.path.join(kwargs['output'], 'api', 'matches', file_id + '.json'), 'w') as out:
       json.dump(l, out)
   del l
+  # write the sorted match indices for each sort heuristic
+  l = []
+  for i in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
+    file_id = os.path.basename(i).replace('.json', '')
+    with open(i) as f:
+      file_matches = []
+      for midx, m in enumerate(json.load(f)):
+        # just store the file index, match index, source_author, source_title and similarity
+        file_matches.append([file_id, midx, m.get('source_author' ''), m.get('source_title', ''), m.get('similarity', '')])
+      l += file_matches
+  for label, idx in [['author', 2], ['title', 3], ['similarity', 4]]:
+    ids = ['{}.{}'.format(i[0], i[1]) for i in sorted(l, key=lambda j: j[idx])]
+    with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
+      json.dump(ids, out)
+
   # write the scatterplot data
   write_scatterplots(formatted, **kwargs)
 
 def write_scatterplots(formatted, **kwargs):
   '''Given an array of formatted matches, write data for each scatterplot'''
   out_dir = os.path.join(kwargs['output'], 'api', 'scatterplots')
-  if not os.path.exists(out_dir):
-    os.makedirs(out_dir)
   for i in ['source', 'target']:
     for j in ['segment_ids', 'file_id', 'author']:
       for k in ['sum', 'mean']:
