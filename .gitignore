@@ -1,7 +1,9 @@
 *.pyc
 *.pem
+*.ipynb
 *.DS_Store
 *.egg-info
 build
 dist
 output
+.ipynb_checkpoints

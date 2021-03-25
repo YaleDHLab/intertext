@@ -1,12 +1,15 @@
+from networkx.algorithms.components.connected import connected_components
 from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
 from difflib import SequenceMatcher
+from bs4 import BeautifulSoup
 from nltk import ngrams
 import multiprocessing
 import functools
 import distutils
 import requests
 import argparse
+import networkx
 import zipfile
 import codecs
 import shutil
@@ -17,6 +20,7 @@ import os
 
 config = {
   'infile_glob': [],
+  'banish_glob': [],
   'output': 'output',
   'metadata': {},
   'encoding': 'utf8',
@@ -35,14 +39,13 @@ config = {
 TODO:
   * add --in_memory flag else write data to disk
   * add xml parsing (tag to parse, tags to exclude)
-  * add files from which matches should be blacklisted
+  * add files from which matches should be banished
   * add flag to indicate if same-author matches are allowed
   * add support for CSV metadata
   * add removal of diacritics
   * add support for xml + txt in same run
   * add unique guid for each output set to avoid overwriting
   * add GPU acceleration for minhashing
-  * add sort by similarity
 '''
 
 source_location = os.path.dirname(os.path.realpath(__file__))
@@ -53,6 +56,7 @@ def parse():
   description = 'Discover and visualize text reuse'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--infiles', '-i', type=str, default=config['infile_glob'], dest='infile_glob', help='path to a glob of text files to process', required=True)
+  parser.add_argument('--banish', '-b', type=str, default=config['banish_glob'], dest='banish_glob', help='path to a glob of text files to remove from matches', required=False)
   parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a JSON metadata file (see README)', required=False)
   parser.add_argument('--encoding', '-e', type=str, default=config['encoding'], help='the encoding of infiles', required=False)
   parser.add_argument('--window_length', '-w', type=int, default=config['window_length'], help='the length of windows when processing files (see README)', required=False)
@@ -129,15 +133,25 @@ def process_texts(**kwargs):
   for i in ['matches', 'scatterplots', 'indices']:
     if not os.path.exists(os.path.join(kwargs['output'], 'api', i)):
       os.makedirs(os.path.join(kwargs['output'], 'api', i))
-  # identify and store infiles
+  # identify infiles
   infiles = sorted(glob.glob(kwargs['infile_glob']))
   if len(infiles) == 0:
     raise Exception('No infiles could be found!')
+  # identify banished files
+  banished_files = sorted(glob.glob(kwargs['banish_glob']))
+  infiles += banished_files
+  banished_file_set = set(banished_files)
+  # store the infiles
   with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
     json.dump(infiles, out)
   # if the user provided metadata, store it in the kwargs
   if kwargs.get('metadata'):
     kwargs['metadata'] = json.load(open(kwargs['metadata']))
+  # if the user provided banished files, store their file ids
+  banished_ids = set()
+  for file_idx, file in enumerate(infiles):
+    if file in banished_file_set:
+      banished_ids.add(file_idx)
   # create minhashes
   print(' * creating minhashes')
   id_d = {} # d[window_id] = [file_id, window_index]
@@ -155,6 +169,7 @@ def process_texts(**kwargs):
     file_id_a, window_index_a = id_d[i]
     for j in lsh.query(minhash_d[i]):
       file_id_b, window_index_b = id_d[j]
+      # store the lower file id as the first key in the candidate match dictionary
       if file_id_a < file_id_b:
         candidate_d[file_id_a][file_id_b].append([window_index_a, window_index_b])
       else:
@@ -175,8 +190,28 @@ def process_texts(**kwargs):
         if sim >= kwargs['min_sim']:
           matches_d[file_id_a][file_id_b].append([window_a, window_b, round(sim, 2)])
   del candidate_d
+  # banish matches
+  l = []
+  for file_id_a in matches_d:
+    for file_id_b in matches_d[file_id_a]:
+      for m in matches_d[file_id_a][file_id_b]:
+        l.append([ f'{file_id_a}.{m[0]}', f'{file_id_b}.{m[1]}'])
+  # map file_id.segment_id segments to whether or not they're banished
+  banished_set = set()
+  for i in list(connected_components(to_graph(l))):
+    if any([int(j.split('.')[0]) in banished_ids for j in i]):
+      for j in i:
+        banished_set.add(j)
+  # apply the banish filter
+  for file_id_a in list(matches_d):
+    for file_id_b in list(matches_d[file_id_a]):
+      l = []
+      for window_a, window_b, sim in matches_d[file_id_a][file_id_b]:
+        if (f'{file_id_a}.{window_a}' not in banished_set) and \
+           (f'{file_id_b}.{window_b}' not in banished_set):
+          l.append([window_a, window_b, sim])
+      matches_d[file_id_a][file_id_b] = l
   # cluster the matches
-  print(' * clustering matches')
   formatted = []
   for file_id_a in matches_d:
     for file_id_b in matches_d[file_id_a]:
@@ -190,6 +225,8 @@ def process_texts(**kwargs):
       for a, b, sim in matches_d[file_id_a][file_id_b]:
         d[a][b] = sim
       # find sequences of windows in a and b
+      if not matches_d[file_id_a][file_id_b]:
+        continue
       window_as, window_bs, sims = zip(*matches_d[file_id_a][file_id_b])
       for a in get_sequences(window_as):
         for b in get_sequences(window_bs):
@@ -325,7 +362,12 @@ def get_cacheable(kwargs):
   return d
 
 def write_outputs(infiles, formatted, **kwargs):
-  '''Given a 2D list where sublists are matches between two texts, write all outputs'''
+  '''
+  @arg: infiles [str]: list of strings that denote input files in the order they were processed
+  @arg: formatted [arr]: a 2D array where sublists are matching window indices between two texts
+
+  Write the match outputs for a pair of files
+  '''
   print(' * writing outputs to "{}"'.format(kwargs['output']))
   # write the subdirectories if necessary
   for i in range(len(infiles)):
@@ -378,7 +420,6 @@ def write_outputs(infiles, formatted, **kwargs):
     ids = ['{}.{}'.format(i[0], i[1]) for i in sorted(l, key=lambda j: j[idx])]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
-
   # write the scatterplot data
   write_scatterplots(formatted, **kwargs)
 
@@ -421,6 +462,23 @@ def write_scatterplots(formatted, **kwargs):
         # write the scatterplot data
         with open(os.path.join(out_dir, '{}-{}-{}.json'.format(i, j, k)), 'w') as out:
           json.dump(scatterplot_data, out)
+
+def to_graph(l):
+  '''Given a 2D array, return a networkx.Graph object'''
+  G = networkx.Graph()
+  # i is a list of nodes that share edges
+  for i in l:
+    G.add_nodes_from(i)
+    G.add_edges_from(to_edges(i))
+  return G
+
+def to_edges(l):
+  '''Given a list of elements that share edges in a graph, iterate those edges pairwise'''
+  iterator = iter(l)
+  last = next(iterator)
+  for current in iterator:
+    yield last, current
+    last = current
 
 if __name__ == '__main__':
   parse()
