@@ -22,6 +22,7 @@ setup(
     'nltk==3.4.5',
     'pymongo==3.3.1',
     'requests==2.24.0',
+    'unidecode==1.2.0',
   ],
   entry_points={
     'console_scripts': [
