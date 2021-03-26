@@ -383,6 +383,23 @@ def get_cacheable(*args):
       kwargs.update(i)
   return {k: kwargs[k] for k in kwargs if isinstance(kwargs[k], Hashable)}
 
+def to_graph(l):
+  '''Given a 2D array, return a networkx.Graph object'''
+  G = networkx.Graph()
+  # i is a list of nodes that share edges
+  for i in l:
+    G.add_nodes_from(i)
+    G.add_edges_from(to_edges(i))
+  return G
+
+def to_edges(l):
+  '''Given a list of elements that share edges in a graph, iterate those edges pairwise'''
+  iterator = iter(l)
+  last = next(iterator)
+  for current in iterator:
+    yield last, current
+    last = current
+
 def write_outputs(infiles, formatted, **kwargs):
   '''
   @arg: infiles [str]: list of strings that denote input files in the order they were processed
@@ -436,10 +453,17 @@ def write_outputs(infiles, formatted, **kwargs):
       file_matches = []
       for midx, m in enumerate(json.load(f)):
         # just store the file index, match index, source_author, source_title and similarity
-        file_matches.append([file_id, midx, m.get('source_author' ''), m.get('source_title', ''), m.get('similarity', '')])
+        file_matches.append([
+          file_id,
+          midx,
+          m.get('similarity', ''),
+          m.get('source_author' ''),
+          m.get('source_title', ''),
+          m.get('source_year', ''),
+        ])
       l += file_matches
-  for label, idx in [['author', 2], ['title', 3], ['similarity', 4]]:
-    ids = ['{}.{}'.format(i[0], i[1]) for i in sorted(l, key=lambda j: j[idx])]
+  for label, idx in [['similarity', 2], ['author', 3], ['title', 4], ['year', 5]]:
+    ids = ['{}.{}.{}'.format(i[0], i[1], int(i[2]*100)) for i in sorted(l, key=lambda j: j[idx])]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
   # write the scatterplot data
@@ -484,23 +508,6 @@ def write_scatterplots(formatted, **kwargs):
         # write the scatterplot data
         with open(os.path.join(out_dir, '{}-{}-{}.json'.format(i, j, k)), 'w') as out:
           json.dump(scatterplot_data, out)
-
-def to_graph(l):
-  '''Given a 2D array, return a networkx.Graph object'''
-  G = networkx.Graph()
-  # i is a list of nodes that share edges
-  for i in l:
-    G.add_nodes_from(i)
-    G.add_edges_from(to_edges(i))
-  return G
-
-def to_edges(l):
-  '''Given a list of elements that share edges in a graph, iterate those edges pairwise'''
-  iterator = iter(l)
-  last = next(iterator)
-  for current in iterator:
-    yield last, current
-    last = current
 
 if __name__ == '__main__':
   parse()
