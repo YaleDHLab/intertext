@@ -15,7 +15,10 @@ python setup.py install
 
 ```bash
 # search for intertextuality in some documents
-intertext --infiles "sample_data/texts/*.txt" --metadata "sample_data/metadata.json" --update_client
+intertext \
+  --infiles "sample_data/texts/*.txt" \
+  --metadata "sample_data/metadata.json" \
+  --update_client
 
 # serve output
 cd output && python -m http.server
