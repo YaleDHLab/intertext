@@ -648,6 +648,11 @@ def get_db(initialize=False, **kwargs):
   if initialize:
     db.execute('PRAGMA synchronous = OFF;')
     db.execute('PRAGMA journal_mode = WAL;')
+  if kwargs['in_memory']:
+    db.execute('PRAGMA temp_store = 2;')
+  else:
+    db.execute('PRAGMA temp_store = 1;')
+    db.execute('PRAGMA temp_store_directory = "{}"'.format(os.path.join(kwargs['output'], 'cache')))
   return db
 
 
