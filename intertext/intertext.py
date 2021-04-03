@@ -59,6 +59,9 @@ TODO:
   * add flag to indicate if same-author matches are allowed
   * add support for CSV metadata
   * add support for xml + txt in same run
+  * throw an error if the disk location is a networked drive
+  * make db swapable for MySQL
+  * deduplicate matches by id when writing JSON
 '''
 
 
@@ -658,35 +661,47 @@ def get_db(initialize=False, **kwargs):
 
 def write_hashbands(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    time.sleep(1)
+    return write_hashbands(writes, **kwargs)
 
 
 def write_candidates(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    time.sleep(1)
+    return write_candidates(writes, **kwargs)
 
 
 def write_matches(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'matches')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'matches')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    time.sleep(1)
+    return write_matches(writes, **kwargs)
 
 
 ##
