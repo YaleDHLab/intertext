@@ -646,8 +646,8 @@ def get_db(initialize=False, **kwargs):
     db_location = os.path.join(kwargs['output'], 'cache', 'intertext.db')
   db = sqlite3.connect(db_location, uri=True, timeout=60)
   if initialize:
-    db.execute('PRAGMA synchronous = OFF;')
-    db.execute('PRAGMA journal_mode = WAL;')
+    db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
+    db.execute('PRAGMA journal_mode = DELETE;') # WAL is fastest
   if kwargs['in_memory']:
     db.execute('PRAGMA temp_store = 2;')
   else:
