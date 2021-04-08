@@ -7,6 +7,7 @@ from unidecode import unidecode
 from contextlib import closing
 from bs4 import BeautifulSoup
 from Levenshtein import ratio
+from copy import deepcopy
 from nltk import ngrams
 import multiprocessing
 import numpy as np
@@ -185,14 +186,14 @@ def process_texts(**kwargs):
       os.makedirs(path)
 
   # create the db
-  db = get_db(initialize=True, **kwargs)
-  cursor = db.cursor()
-  cursor.execute('DROP TABLE IF EXISTS hashbands;')
-  cursor.execute('DROP TABLE IF EXISTS candidates;')
-  cursor.execute('DROP TABLE IF EXISTS matches;')
-  cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
-  cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
-  cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
+  with closing(get_db(initialize=True, **kwargs)) as db:
+    cursor = db.cursor()
+    cursor.execute('DROP TABLE IF EXISTS hashbands;')
+    cursor.execute('DROP TABLE IF EXISTS candidates;')
+    cursor.execute('DROP TABLE IF EXISTS matches;')
+    cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
+    cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
+    cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
 
   # minhash files & store hashbands in db
   print(' * creating minhashes')
@@ -446,23 +447,9 @@ def format_file_matches(args, **kwargs):
 
 def format_matches(file_id_a, file_id_b, clusters, **kwargs):
   '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
+  file_id_a, file_id_b, clusters = order_match_pair(file_id_a, file_id_b, clusters, **kwargs)
   a_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_a]), {})
   b_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_b]), {})
-  # set `a` equal to the record pubished first
-  if a_meta and b_meta and \
-     a_meta.get('year') and b_meta.get('year') and \
-     b_meta.get('year') < a_meta.get('year'):
-    old_a = file_id_a
-    old_b = file_id_b
-    file_id_b = old_a
-    file_id_a = old_b
-    a_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_a]), {})
-    b_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_b]), {})
-    for c in clusters:
-      a_windows = c['b']
-      b_windows = c['a']
-      c['b'] = a_windows
-      c['a'] = b_windows
   # format the matches
   a_words = get_words(kwargs['infiles'][file_id_a], **get_cacheable(kwargs, {'display': True}))
   b_words = get_words(kwargs['infiles'][file_id_b], **get_cacheable(kwargs, {'display': True}))
@@ -499,6 +486,27 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
   return(formatted)
 
 
+def order_match_pair(file_id_a, file_id_b, clusters, **kwargs):
+  '''Set file id a to the previously published file (if relevant)'''
+  a_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_a]), {})
+  b_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_b]), {})
+  if a_meta and \
+     b_meta and \
+     a_meta.get('year') and \
+     b_meta.get('year') and \
+     b_meta.get('year') < a_meta.get('year'):
+    return [
+      file_id_b,
+      file_id_a,
+      [{'a': c['b'], 'b': c['a'], 'sim': c['sim']} for c in deepcopy(clusters)]
+    ]
+  return [
+    file_id_a,
+    file_id_b,
+    clusters,
+  ]
+
+
 def get_match_strings(words, window_ids, **kwargs):
   '''Given a list of words and window ids, format prematch, match, and postmatch strings for a match'''
   start = min(window_ids) * kwargs['slide_length']
@@ -529,11 +537,19 @@ def get_sequences(l):
 def create_all_match_json(**kwargs):
   '''Create the output JSON to be consumed by the web client'''
   pool = multiprocessing.Pool()
-  l = glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*'))
-  f = functools.partial(create_match_json, **kwargs)
-  for i in pool.map(f, l): pass
-  pool.close()
-  pool.join()
+  # combine all the matches in each match directory into a composite match file
+  guid_to_int = defaultdict(lambda: len(guid_to_int))
+  for match_directory in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
+    # l contains the flat list of matches for a single input file
+    l = []
+    for j in glob.glob(os.path.join(match_directory, '*')):
+      with open(j) as f:
+        l += json.load(f)
+    for i in l:
+      i['_id'] = guid_to_int[i['_id']]
+    with open(os.path.join(match_directory + '.json'), 'w') as out:
+      json.dump(l, out)
+    shutil.rmtree(match_directory)
 
   # save JSON with the list of infiles
   with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
@@ -557,7 +573,9 @@ def create_all_match_json(**kwargs):
     for match_idx, match in enumerate(matches):
       l.append([
         file_id,
+        match.get('_id'),
         match_idx,
+        int(file_id) == int(match.get('source_file_id')),
         match.get('similarity', ''),
         match.get('source_author' ''),
         match.get('source_title', ''),
@@ -565,24 +583,19 @@ def create_all_match_json(**kwargs):
       ])
 
   # create and store the file_id.match_index indices for each sort heuristic
-  for label, idx in [['similarity', 2], ['author', 3], ['title', 4], ['year', 5]]:
-    ids = ['{}.{}.{}'.format(i[0], i[1], int(i[2])) for i in sorted(l, key=lambda j: j[idx])]
+  for label, idx in [['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
+    ids = [[
+      int(i[0]),
+      int(i[1]),
+      int(i[2]),
+      bool(i[3]),
+      int(i[4]),
+    ] for i in sorted(l, key=lambda j: j[idx])]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
 
   # create the scatterplot data
   write_scatterplots(**kwargs)
-
-
-def create_match_json(match_directory, **kwargs):
-  '''Combine the matches where a single file is source or target into one composite JSON file'''
-  l = []
-  for j in glob.glob(os.path.join(match_directory, '*')):
-    with open(j) as f:
-      l += json.load(f)
-  with open(os.path.join(match_directory + '.json'), 'w') as out:
-    json.dump(l, out)
-  shutil.rmtree(match_directory)
 
 
 def stream_match_lists(**kwargs):
@@ -660,35 +673,52 @@ def get_db(initialize=False, **kwargs):
 
 def write_hashbands(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_hashbands(writes, **kwargs)
 
 
 def write_candidates(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_candidates(writes, **kwargs)
 
 
 def write_matches(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  if writes:
-    if kwargs['verbose']: print(' * writing', len(writes), 'matches')
-    with closing(get_db(**kwargs)) as db:
-      cursor = db.cursor()
-      cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
-      db.commit()
-  return []
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'matches')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_matches(writes, **kwargs)
+
+
+def repair_database(**kwargs):
+  '''Attempt to repair the db in a process-safe manner'''
+  raise sqlite3.DatabaseError
 
 
 ##
