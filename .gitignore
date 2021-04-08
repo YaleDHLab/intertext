@@ -1,5 +1,6 @@
 *.pyc
 *.pem
+*.zip
 *.ipynb
 *.DS_Store
 *.egg-info

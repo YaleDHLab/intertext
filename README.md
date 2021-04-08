@@ -18,7 +18,8 @@ python setup.py install
 intertext \
   --infiles "sample_data/texts/*.txt" \
   --metadata "sample_data/metadata.json" \
-  --update_client
+  --update_client \
+  --verbose
 
 # serve output
 cd output && python -m http.server
