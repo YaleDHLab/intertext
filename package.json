@@ -1,7 +1,7 @@
 {
   "name": "intertext",
   "version": "0.1.0",
-  "author": "Douglas Duahime",
+  "author": "Yale DHLab",
   "license": "MIT",
   "description": "Visualizing text reuse",
   "main": "server/server.js",
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "webpack-dev-server --port 7091 --config server/webpack.config.js",
+    "start": "webpack-dev-server --port 7091 --config server/webpack.config.js --open",
     "build": "./node_modules/webpack/bin/webpack.js --config server/webpack.config.js",
     "compress": "./node_modules/webpack/bin/webpack.js --config server/webpack.config.js",
     "production": "npm run build && node server/server.js",
