@@ -561,7 +561,7 @@ def create_all_match_json(**kwargs):
   author_d = defaultdict(list)
   title_d = defaultdict(list)
   for idx, i in enumerate(authors): author_d[i].append(idx)
-  for idx, i in enumerate(titles): author_d[i].append(idx)
+  for idx, i in enumerate(titles): title_d[i].append(idx)
   with open(os.path.join(kwargs['output'], 'api', 'authors.json'), 'w') as out:
     json.dump(author_d, out)
   with open(os.path.join(kwargs['output'], 'api', 'titles.json'), 'w')  as out:
