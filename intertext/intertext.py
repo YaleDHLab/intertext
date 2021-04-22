@@ -638,6 +638,61 @@ def get_db(initialize=False, **kwargs):
 
 
 ##
+# DB Setters
+##
+
+
+def write_hashbands(writes, **kwargs):
+  '''Given a db cursor and list of write operations, insert each'''
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_hashbands(writes, **kwargs)
+
+
+def write_candidates(writes, **kwargs):
+  '''Given a db cursor and list of write operations, insert each'''
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_candidates(writes, **kwargs)
+
+
+def write_matches(writes, **kwargs):
+  '''Given a db cursor and list of write operations, insert each'''
+  try:
+    if writes:
+      if kwargs['verbose']: print(' * writing', len(writes), 'matches')
+      with closing(get_db(**kwargs)) as db:
+        cursor = db.cursor()
+        cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
+        db.commit()
+    return []
+  except sqlite3.DatabaseError:
+    repair_database(**kwargs)
+    return write_matches(writes, **kwargs)
+
+
+def repair_database(**kwargs):
+  '''Attempt to repair the db in a process-safe manner'''
+  raise sqlite3.DatabaseError
+
+
+##
 # DB Getters
 ##
 
@@ -709,61 +764,6 @@ def stream_match_lists(**kwargs):
     with open(i) as f:
       match_list = json.load(f)
       yield (file_id, match_list)
-
-
-def write_hashbands(writes, **kwargs):
-  '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
-      if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
-      with closing(get_db(**kwargs)) as db:
-        cursor = db.cursor()
-        cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
-        db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_hashbands(writes, **kwargs)
-
-
-##
-# DB Setters
-##
-
-
-def write_candidates(writes, **kwargs):
-  '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
-      if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
-      with closing(get_db(**kwargs)) as db:
-        cursor = db.cursor()
-        cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
-        db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_candidates(writes, **kwargs)
-
-
-def write_matches(writes, **kwargs):
-  '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
-      if kwargs['verbose']: print(' * writing', len(writes), 'matches')
-      with closing(get_db(**kwargs)) as db:
-        cursor = db.cursor()
-        cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
-        db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_matches(writes, **kwargs)
-
-
-def repair_database(**kwargs):
-  '''Attempt to repair the db in a process-safe manner'''
-  raise sqlite3.DatabaseError
 
 
 ##
