@@ -186,14 +186,7 @@ def process_texts(**kwargs):
       os.makedirs(path)
 
   # create the db
-  with closing(get_db(initialize=True, **kwargs)) as db:
-    cursor = db.cursor()
-    cursor.execute('DROP TABLE IF EXISTS hashbands;')
-    cursor.execute('DROP TABLE IF EXISTS candidates;')
-    cursor.execute('DROP TABLE IF EXISTS matches;')
-    cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
-    cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
-    cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
+  initialize_db(**kwargs)
 
   # minhash files & store hashbands in db
   print(' * creating minhashes')
@@ -270,25 +263,13 @@ def get_file_minhashes(file_path, **kwargs):
 
 def get_all_match_candidates(**kwargs):
   '''Find all hashbands that have multiple distinct file_ids and save as match candidates'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    rows = []
-    for row in cursor.execute('''
-      WITH file_id_counts AS (
-        SELECT hashband, COUNT(DISTINCT(file_id)) as count
-        FROM hashbands
-        GROUP BY hashband
-        HAVING COUNT > 1
-      ) SELECT hashband, file_id, window_id
-        FROM hashbands
-        WHERE hashband IN (SELECT hashband from file_id_counts)
-        ORDER BY hashband
-    '''):
-      rows.append(row)
-      # the hashbands table is our largest data artifact - paginate in blocks
-      if len(rows) >= 10**6:
-        process_candidate_hashbands(rows, **kwargs)
-        rows = []
+  rows = []
+  for row in stream_hashbands(**kwargs):
+    rows.append(row)
+    # the hashbands table is our largest data artifact - paginate in blocks
+    if len(rows) >= 10**6:
+      process_candidate_hashbands(rows, **kwargs)
+      rows = []
   process_candidate_hashbands(rows, **kwargs)
 
 
@@ -306,13 +287,6 @@ def process_candidate_hashbands(l, **kwargs):
       writes = write_candidates(writes, **kwargs)
   pool.close()
   pool.join()
-
-
-def subdivide(l, n):
-  '''Subdivide list `l` into units `n` long'''
-  if not l or not n: return l
-  for i in range(0, len(l), n):
-    yield l[i:i + n]
 
 
 def get_hashband_match_candidates(args, **kwargs):
@@ -339,6 +313,13 @@ def get_hashband_match_candidates(args, **kwargs):
   return set(results)
 
 
+def subdivide(l, n):
+  '''Subdivide list `l` into units `n` long'''
+  if not l or not n: return l
+  for i in range(0, len(l), n):
+    yield l[i:i + n]
+
+
 ##
 # Validate matches
 ##
@@ -347,13 +328,7 @@ def get_hashband_match_candidates(args, **kwargs):
 def validate_all_matches(**kwargs):
   '''Run match validations and yield [a_file,b_file,a_window,b_window]'''
   pool = multiprocessing.Pool()
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    l = list(cursor.execute('''
-      SELECT DISTINCT file_id_a, file_id_b
-      FROM candidates
-      ORDER BY file_id_a, file_id_b
-    '''))
+  l = stream_candidate_file_id_pairs(**kwargs)
   f = functools.partial(validate_file_matches, **kwargs)
   for i in pool.map(f, l): pass
   pool.close()
@@ -364,15 +339,7 @@ def validate_file_matches(args, **kwargs):
   '''Validate the matches for a single file pair and return [a_file,b_file,a_window,b_window]'''
   file_id_a, file_id_b = args
   matches = []
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    l = list(cursor.execute('''
-      SELECT DISTINCT file_id_a, file_id_b, window_id_a, window_id_b
-      FROM candidates
-      WHERE file_id_a = ? AND file_id_b = ?
-      ORDER BY file_id_b
-    ''', (file_id_a, file_id_b,)))
-  for i in l:
+  for i in stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
     file_id_a, file_id_b, window_id_a, window_id_b = i
     file_a_windows = list(get_windows(kwargs['infiles'][file_id_a], **get_cacheable(kwargs)))
     file_b_windows = list(get_windows(kwargs['infiles'][file_id_b], **get_cacheable(kwargs)))
@@ -393,9 +360,7 @@ def validate_file_matches(args, **kwargs):
 def format_all_matches( **kwargs):
   '''Format the match objects for each infile and store as JSON'''
   pool = multiprocessing.Pool()
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    l = list(cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'))
+  l = stream_matching_file_id_pairs(**kwargs)
   f = functools.partial(format_file_matches, **kwargs)
   for i in pool.map(f, l): pass
   pool.close()
@@ -405,9 +370,7 @@ def format_all_matches( **kwargs):
 def format_file_matches(args, **kwargs):
   ''''Format the matches for a single file pair'''
   file_id_a, file_id_b = args
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    l = list(cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (*args,)))
+  l = stream_file_pair_matches(file_id_a, file_id_b, **kwargs)
   # check to see if this file pair has >= max allowed similarity
   a_windows = get_windows(kwargs['infiles'][file_id_a], **get_cacheable(kwargs))
   b_windows = get_windows(kwargs['infiles'][file_id_b], **get_cacheable(kwargs))
@@ -598,15 +561,6 @@ def create_all_match_json(**kwargs):
   write_scatterplots(**kwargs)
 
 
-def stream_match_lists(**kwargs):
-  '''Yield a stream of (file_id, [match, match, ...]) objects'''
-  for i in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
-    file_id = os.path.basename(i).replace('.json', '')
-    with open(i) as f:
-      match_list = json.load(f)
-      yield (file_id, match_list)
-
-
 def write_scatterplots(**kwargs):
   '''Write the scatterplot JSON'''
   out_dir = os.path.join(kwargs['output'], 'api', 'scatterplots')
@@ -649,8 +603,20 @@ def write_scatterplots(**kwargs):
 
 
 ##
-# DB writes
+# DB
 ##
+
+
+def initialize_db(**kwargs):
+  '''Run all setup steps to create the database'''
+  with closing(get_db(initialize=True, **kwargs)) as db:
+    cursor = db.cursor()
+    cursor.execute('DROP TABLE IF EXISTS hashbands;')
+    cursor.execute('DROP TABLE IF EXISTS candidates;')
+    cursor.execute('DROP TABLE IF EXISTS matches;')
+    cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
+    cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
+    cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
 
 
 def get_db(initialize=False, **kwargs):
@@ -671,6 +637,80 @@ def get_db(initialize=False, **kwargs):
   return db
 
 
+##
+# DB Getters
+##
+
+
+def stream_hashbands(**kwargs):
+  '''Stream [hashband, file_id, window_id] sorted by hashband'''
+  with closing(get_db(**kwargs)) as db:
+    cursor = db.cursor()
+    rows = []
+    for row in cursor.execute('''
+      WITH file_id_counts AS (
+        SELECT hashband, COUNT(DISTINCT(file_id)) as count
+        FROM hashbands
+        GROUP BY hashband
+        HAVING COUNT > 1
+      ) SELECT hashband, file_id, window_id
+        FROM hashbands
+        WHERE hashband IN (SELECT hashband from file_id_counts)
+        ORDER BY hashband
+    '''):
+      yield row
+
+
+def stream_candidate_file_id_pairs(**kwargs):
+  '''Stream [file_id_a, file_id_b] pairs for files with matching hashbands'''
+  with closing(get_db(**kwargs)) as db:
+    cursor = db.cursor()
+    for row in cursor.execute('''
+      SELECT DISTINCT file_id_a, file_id_b
+      FROM candidates
+      ORDER BY file_id_a, file_id_b
+    '''):
+      yield row
+
+
+def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
+  '''Stream [file_id_a, file_id_b, window_id_a, window_id_b] for matching hashbands'''
+  with closing(get_db(**kwargs)) as db:
+    cursor = db.cursor()
+    for i in cursor.execute('''
+        SELECT DISTINCT file_id_a, file_id_b, window_id_a, window_id_b
+        FROM candidates
+        WHERE file_id_a = ? AND file_id_b = ?
+        ORDER BY file_id_b
+      ''', (file_id_a, file_id_b,)):
+      yield i
+
+
+def stream_matching_file_id_pairs(**kwargs):
+  '''Stream [file_id_a, file_id_b] for file ids that have verified matches'''
+  with closing(get_db(**kwargs)) as db:
+    cursor = db.cursor()
+    for i in cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'):
+      yield i
+
+
+def stream_file_pair_matches(file_id_a, file_id_b, **kwargs):
+  '''Stream [file_id_a, file_id_b, window_id_a, window_id_b, similarity] for a match pair'''
+  with closing(get_db(**kwargs)) as db:
+    cursor = db.cursor()
+    for i in cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (file_id_a, file_id_b,)):
+      yield i
+
+
+def stream_match_lists(**kwargs):
+  '''Stream a stream of (file_id, [match, match, ...]) objects'''
+  for i in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
+    file_id = os.path.basename(i).replace('.json', '')
+    with open(i) as f:
+      match_list = json.load(f)
+      yield (file_id, match_list)
+
+
 def write_hashbands(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
   try:
@@ -684,6 +724,11 @@ def write_hashbands(writes, **kwargs):
   except sqlite3.DatabaseError:
     repair_database(**kwargs)
     return write_hashbands(writes, **kwargs)
+
+
+##
+# DB Setters
+##
 
 
 def write_candidates(writes, **kwargs):
