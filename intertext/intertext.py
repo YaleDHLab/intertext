@@ -51,6 +51,7 @@ config = {
   'update_client': False,
   'strip_diacritics': False,
   'verbose': False,
+  'db': 'disk',
 }
 
 
@@ -65,8 +66,14 @@ TODO:
 '''
 
 
+# path globals
 source_location = os.path.dirname(os.path.realpath(__file__))
 client_location = os.path.join(source_location, 'client')
+
+
+# db globals
+row_delimiter = '|'
+field_delimiter = '-'
 
 
 def parse():
@@ -95,6 +102,7 @@ def parse():
   parser.add_argument('--strip_diacritics', default=config['strip_diacritics'], help='if specified, diacritics will be parsed from texts during processing', required=False, action='store_true')
   parser.add_argument('--update_client', default=config['update_client'], help='boolean indicating whether to update the stored client', required=False, action='store_true')
   parser.add_argument('--verbose', '-v', default=config['verbose'], help='if specified, the intertext process will log more operations', required=False, action='store_true')
+  parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
@@ -284,7 +292,8 @@ def process_candidate_hashbands(l, **kwargs):
   for idx, i in enumerate(pool.map(f, l)):
     writes += i
     if len(writes) >= kwargs['write_frequency'] or idx == len(l)-1:
-      writes = write_candidates(writes, **kwargs)
+      write_candidates(writes, **kwargs)
+      writes = []
   pool.close()
   pool.join()
 
@@ -609,18 +618,24 @@ def write_scatterplots(**kwargs):
 
 def initialize_db(**kwargs):
   '''Run all setup steps to create the database'''
-  with closing(get_db(initialize=True, **kwargs)) as db:
-    cursor = db.cursor()
-    cursor.execute('DROP TABLE IF EXISTS hashbands;')
-    cursor.execute('DROP TABLE IF EXISTS candidates;')
-    cursor.execute('DROP TABLE IF EXISTS matches;')
-    cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
-    cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
-    cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(initialize=True, **kwargs)) as db:
+      cursor = db.cursor()
+      cursor.execute('DROP TABLE IF EXISTS hashbands;')
+      cursor.execute('DROP TABLE IF EXISTS candidates;')
+      cursor.execute('DROP TABLE IF EXISTS matches;')
+      cursor.execute('CREATE TABLE hashbands (hashband TEXT, file_id INTEGER, window_id INTEGER);')
+      cursor.execute('CREATE TABLE candidates (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, UNIQUE(file_id_a, file_id_b, window_id_a, window_id_b));')
+      cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
+  else:
+    for i in ['hashbands', 'candidates', 'matches']:
+      path = os.path.join(kwargs['output'], 'db', i)
+      if not os.path.exists(path):
+        os.makedirs(path)
 
 
 def get_db(initialize=False, **kwargs):
-  '''Return a DB'''
+  '''Return a Sqlite DB'''
   if kwargs['in_memory']:
     db_location = 'file:memdb1?mode=memory&cache=shared'
   else:
@@ -644,47 +659,94 @@ def get_db(initialize=False, **kwargs):
 
 def write_hashbands(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
+  if not writes: return []
+  if kwargs.get('db') == 'sqlite':
+    try:
       if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
       with closing(get_db(**kwargs)) as db:
         cursor = db.cursor()
         cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
         db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_hashbands(writes, **kwargs)
+    except sqlite3.DatabaseError:
+      repair_database(**kwargs)
+      return write_hashbands(writes, **kwargs)
+  else:
+    d = defaultdict(list)
+    for hashband, file_id, window_id in writes:
+      d[hashband].append([file_id, window_id])
+    for hashband in d:
+      out_dir = os.path.join(kwargs['output'], 'db', 'hashbands', hashband[0:2])
+      if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+      path = os.path.join(out_dir, hashband[2:4])
+      with open(path, 'a') as out:
+        s = ''
+        for r in d[hashband]:
+          s += field_delimiter.join([str(v) for v in [hashband] + r]) + row_delimiter
+        out.write(s)
 
 
 def write_candidates(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
+  if not writes: return
+  if kwargs.get('db') == 'sqlite':
+    try:
       if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
       with closing(get_db(**kwargs)) as db:
         cursor = db.cursor()
         cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
         db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_candidates(writes, **kwargs)
+    except sqlite3.DatabaseError:
+      repair_database(**kwargs)
+      return write_candidates(writes, **kwargs)
+  else:
+    d = defaultdict(lambda: defaultdict(list))
+    for row in writes:
+      file_id_a, file_id_b, window_id_a, window_id_b = row
+      d[file_id_a][file_id_b].append([window_id_a, window_id_b])
+    for file_id_a in d:
+      for file_id_b in d[file_id_a]:
+        out_dir = os.path.join(kwargs['output'], 'db', 'candidates', str(file_id_a))
+        if not os.path.exists(out_dir):
+          os.makedirs(out_dir)
+        path = os.path.join(out_dir, str(file_id_b))
+        s = ''
+        for row in d[file_id_a][file_id_b]:
+          s += field_delimiter.join([str(v) for v in row]) + row_delimiter
+        with open(path, 'a') as out:
+          out.write(s)
 
 
 def write_matches(writes, **kwargs):
   '''Given a db cursor and list of write operations, insert each'''
-  try:
-    if writes:
-      if kwargs['verbose']: print(' * writing', len(writes), 'matches')
-      with closing(get_db(**kwargs)) as db:
-        cursor = db.cursor()
-        cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
-        db.commit()
-    return []
-  except sqlite3.DatabaseError:
-    repair_database(**kwargs)
-    return write_matches(writes, **kwargs)
+  if kwargs.get('db') == 'sqlite':
+    try:
+      if writes:
+        if kwargs['verbose']: print(' * writing', len(writes), 'matches')
+        with closing(get_db(**kwargs)) as db:
+          cursor = db.cursor()
+          cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
+          db.commit()
+      return []
+    except sqlite3.DatabaseError:
+      repair_database(**kwargs)
+      return write_matches(writes, **kwargs)
+  else:
+    d = defaultdict(lambda: defaultdict(list))
+    for row in writes:
+      file_id_a, file_id_b, window_id_a, window_id_b, sim = row
+      d[file_id_a][file_id_b].append([window_id_a, window_id_b, sim])
+    for file_id_a in d:
+      for file_id_b in d[file_id_a]:
+        out_dir = os.path.join(kwargs['output'], 'db', 'matches', str(file_id_a))
+        if not os.path.exists(out_dir):
+          os.makedirs(out_dir)
+        path = os.path.join(out_dir, str(file_id_b))
+        s = ''
+        for row in d[file_id_a][file_id_b]:
+          s += field_delimiter.join([str(v) for v in row]) + row_delimiter
+        with open(path, 'a') as out:
+          out.write(s)
 
 
 def repair_database(**kwargs):
@@ -699,62 +761,105 @@ def repair_database(**kwargs):
 
 def stream_hashbands(**kwargs):
   '''Stream [hashband, file_id, window_id] sorted by hashband'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    rows = []
-    for row in cursor.execute('''
-      WITH file_id_counts AS (
-        SELECT hashband, COUNT(DISTINCT(file_id)) as count
-        FROM hashbands
-        GROUP BY hashband
-        HAVING COUNT > 1
-      ) SELECT hashband, file_id, window_id
-        FROM hashbands
-        WHERE hashband IN (SELECT hashband from file_id_counts)
-        ORDER BY hashband
-    '''):
-      yield row
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(**kwargs)) as db:
+      cursor = db.cursor()
+      rows = []
+      for row in cursor.execute('''
+        WITH file_id_counts AS (
+          SELECT hashband, COUNT(DISTINCT(file_id)) as count
+          FROM hashbands
+          GROUP BY hashband
+          HAVING COUNT > 1
+        ) SELECT hashband, file_id, window_id
+          FROM hashbands
+          WHERE hashband IN (SELECT hashband from file_id_counts)
+          ORDER BY hashband
+      '''):
+        yield row
+  else:
+    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'hashbands', '*', '*')):
+      d = defaultdict(list)
+      with open(i) as f:
+        f = f.read()
+      for row in f.split(row_delimiter):
+        if not row: continue
+        hashband, file_id, window_id = row.split(field_delimiter)
+        d[hashband].append([int(file_id), int(window_id)])
+      for hashband in d:
+        file_ids, window_ids = zip(*d[hashband])
+        if len(set(file_ids)) > 1:
+          for j in d[hashband]:
+            yield [hashband] + j
 
 
 def stream_candidate_file_id_pairs(**kwargs):
   '''Stream [file_id_a, file_id_b] pairs for files with matching hashbands'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    for row in cursor.execute('''
-      SELECT DISTINCT file_id_a, file_id_b
-      FROM candidates
-      ORDER BY file_id_a, file_id_b
-    '''):
-      yield row
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(**kwargs)) as db:
+      cursor = db.cursor()
+      for row in cursor.execute('''
+        SELECT DISTINCT file_id_a, file_id_b
+        FROM candidates
+        ORDER BY file_id_a, file_id_b
+      '''):
+        yield row
+  else:
+    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'candidates', '*')):
+      file_id_a = os.path.split(i)[-1]
+      for j in glob.glob(os.path.join(i, '*')):
+        file_id_b = os.path.split(j)[-1]
+        yield [int(file_id_a), int(file_id_b)]
 
 
 def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
   '''Stream [file_id_a, file_id_b, window_id_a, window_id_b] for matching hashbands'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    for i in cursor.execute('''
-        SELECT DISTINCT file_id_a, file_id_b, window_id_a, window_id_b
-        FROM candidates
-        WHERE file_id_a = ? AND file_id_b = ?
-        ORDER BY file_id_b
-      ''', (file_id_a, file_id_b,)):
-      yield i
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(**kwargs)) as db:
+      cursor = db.cursor()
+      for i in cursor.execute('''
+          SELECT DISTINCT file_id_a, file_id_b, window_id_a, window_id_b
+          FROM candidates
+          WHERE file_id_a = ? AND file_id_b = ?
+          ORDER BY file_id_b
+        ''', (file_id_a, file_id_b,)):
+        yield i
+  else:
+    with open(os.path.join(kwargs['output'], 'db', 'candidates', str(file_id_a), str(file_id_b))) as f:
+      f = f.read()
+    for row in f.split(row_delimiter):
+      if not row: continue
+      yield [int(file_id_a), int(file_id_b)] + [int(i) for i in row.split(field_delimiter)]
 
 
 def stream_matching_file_id_pairs(**kwargs):
   '''Stream [file_id_a, file_id_b] for file ids that have verified matches'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    for i in cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'):
-      yield i
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(**kwargs)) as db:
+      cursor = db.cursor()
+      for i in cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'):
+        yield i
+  else:
+    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'matches', '*')):
+      file_id_a = os.path.split(i)[-1]
+      for j in glob.glob(os.path.join(i, '*')):
+        file_id_b = os.path.split(j)[-1]
+        yield [int(file_id_a), int(file_id_b)]
 
 
 def stream_file_pair_matches(file_id_a, file_id_b, **kwargs):
   '''Stream [file_id_a, file_id_b, window_id_a, window_id_b, similarity] for a match pair'''
-  with closing(get_db(**kwargs)) as db:
-    cursor = db.cursor()
-    for i in cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (file_id_a, file_id_b,)):
-      yield i
+  if kwargs.get('db') == 'sqlite':
+    with closing(get_db(**kwargs)) as db:
+      cursor = db.cursor()
+      for i in cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (file_id_a, file_id_b,)):
+        yield i
+  else:
+    with open(os.path.join(kwargs['output'], 'db', 'matches', str(file_id_a), str(file_id_b))) as f:
+      f = f.read()
+      for row in f.split(row_delimiter):
+        if not row: continue
+        yield [int(file_id_a), int(file_id_b)] + [int(j) for j in row.split(field_delimiter)]
 
 
 def stream_match_lists(**kwargs):
