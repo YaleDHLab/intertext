@@ -2,7 +2,7 @@
 
 > Detect and visualize text reuse within collections of plain text or XML documents.
 
-Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components. [[Demo](https://bit.ly/intertext-demo)]
+Intertext combines machine learning with interactive data visualizations to surface intertextual patterns in large text collections. The text processing is based on minhashing vectorized strings, and the web viewer is based on interactive React components. [[Demo](https://bit.ly/demo-intertext)]
 
 ![App preview](/src/assets/images/preview.png?raw=true)
 
