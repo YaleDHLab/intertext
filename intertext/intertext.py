@@ -390,9 +390,9 @@ def format_file_matches(args, **kwargs):
       return []
   # cluster the matches so sequential matching windows are grouped into a single match
   clusters = []
-  _, _, window_a, window_b, sim = zip(*l)
+  _, _, window_a, window_b, sims = zip(*l)
   d = defaultdict(lambda: defaultdict())
-  for a, b, sim in zip(window_a, window_b, sim):
+  for a, b, sim in zip(window_a, window_b, sims):
     d[a][b] = sim
   for a in get_sequences(window_a):
     for b in get_sequences(window_b):
@@ -402,7 +402,7 @@ def format_file_matches(args, **kwargs):
           if d.get(a_i, {}).get(b_i):
             cluster['a'].add(a_i)
             cluster['b'].add(b_i)
-            cluster['sim'].append(sim)
+            cluster['sim'].append(d[a_i][b_i])
       if cluster['a'] and cluster['b']:
         clusters.append({
           'a': sorted(cluster['a']),
