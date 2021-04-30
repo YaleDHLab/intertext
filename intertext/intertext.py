@@ -106,7 +106,7 @@ def parse():
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
-  if config.get('infiles'): process_texts(**config)
+  if config.get('infile_glob'): process_texts(**config)
 
 
 def remove_client(**kwargs):
