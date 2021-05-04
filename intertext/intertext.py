@@ -129,21 +129,25 @@ def download_client(**kwargs):
     # extract the zip archive
     with zipfile.ZipFile(zip_location, 'r') as z:
       z.extractall(client_location)
-    # if there were any matches in the build directory, remove them
-    former_api_location = os.path.join(client_location, 'build', 'api')
-    if os.path.exists(former_api_location):
-      shutil.rmtree(former_api_location)
-  # save the cache before wiping the outputs
-  if os.path.exists(os.path.join(kwargs['output'], 'cache')):
-    shutil.move(os.path.join(kwargs['output'], 'cache'), os.getcwd())
+    # remove extant matches if user provided inputs
+    if kwargs.get('infile_glob'):
+      former_api_location = os.path.join(client_location, 'build', 'api')
+      if os.path.exists(former_api_location):
+        shutil.rmtree(former_api_location)
+  # save select folders before wiping the outputs
+  retained_folders = ['cache'] if kwargs.get('infile_glob') else ['cache', 'api']
+  for i in retained_folders:
+    if os.path.exists(os.path.join(kwargs['output'], i)):
+      shutil.move(os.path.join(kwargs['output'], i), os.getcwd())
   # copy the `build` directory to the output directory
   if os.path.exists(kwargs['output']):
     shutil.rmtree(kwargs['output'])
   # copy the web client
   shutil.copytree(os.path.join(client_location, 'build'), kwargs['output'])
-  # copy the cache
-  if os.path.exists('cache'):
-    shutil.move('cache', kwargs['output'])
+  # copy the retained folders
+  for i in retained_folders:
+    if os.path.exists(i):
+      shutil.move(i, kwargs['output'])
 
 
 def process_texts(**kwargs):
