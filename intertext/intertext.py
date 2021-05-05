@@ -38,6 +38,7 @@ config = {
   'window_length': 14,
   'hashband_length': 4,
   'hashband_step': 3,
+  'batch_size': 10**5,
   'write_frequency': 10**5,
   'slide_length': 4,
   'chargram_length': 3,
@@ -279,7 +280,7 @@ def get_all_match_candidates(**kwargs):
   for row in stream_hashbands(**kwargs):
     rows.append(row)
     # the hashbands table is our largest data artifact - paginate in blocks
-    if len(rows) >= 10**6:
+    if len(rows) >= kwargs['batch_size']:
       process_candidate_hashbands(rows, **kwargs)
       rows = []
   process_candidate_hashbands(rows, **kwargs)
@@ -290,7 +291,7 @@ def process_candidate_hashbands(l, **kwargs):
   if kwargs['verbose']:
     print(' * processing match candidate block')
   pool = multiprocessing.Pool()
-  l = list(subdivide(l, len(l) // 1)) # multiprocessing.cpu_count()
+  l = list(subdivide(l, len(l) // multiprocessing.cpu_count()))
   f = functools.partial(get_hashband_match_candidates, **kwargs)
   writes = []
   for idx, i in enumerate(pool.map(f, l)):
