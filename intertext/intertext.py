@@ -1,4 +1,5 @@
 from networkx.algorithms.components.connected import connected_components
+from vectorizedMinHash import VectorizedMinHash,fastNGramHashes
 from collections import defaultdict, Hashable, Counter
 from datasketch import MinHash, MinHashLSH
 from difflib import SequenceMatcher
@@ -27,6 +28,13 @@ import json
 import os
 
 
+try:
+  import cupy
+  CUDA_AVAILABLE = True
+except:
+  CUDA_AVAILABLE = False
+
+
 config = {
   'infile_glob': '',
   'banish_glob': '',
@@ -41,10 +49,9 @@ config = {
   'batch_size': 10**5,
   'write_frequency': 10**5,
   'slide_length': 4,
-  'chargram_length': 3,
-  'permutations': 512,
+  'chargram_length': 4,
   'threshold': 0.5,
-  'min_sim': 0.5,
+  'min_sim': 50,
   'banish_distance': 4,
   'max_file_sim': None,
   'client': '0.0.1a',
@@ -73,8 +80,12 @@ client_location = os.path.join(source_location, 'client')
 
 
 # db globals
-row_delimiter = '|'
+row_delimiter = '\n'
 field_delimiter = '-'
+
+
+# minhashing
+hasher = VectorizedMinHash(n_perm=256, mirror=True)
 
 
 def parse():
@@ -91,7 +102,6 @@ def parse():
   parser.add_argument('--chargram_length', '-cl', type=int, default=config['chargram_length'], help='the number of characters per character shingle', required=False)
   parser.add_argument('--write_frequency', '-wf', type=int, default=config['write_frequency'], help='the max number of write operations to store in RAM')
   parser.add_argument('--slide_length', '-l', type=int, default=config['slide_length'], help='the length to slide windows when processing files (see README)', required=False)
-  parser.add_argument('--permutations', '-p', type=int, default=config['permutations'], help='the number of permutation functions to use (see README)', required=False)
   parser.add_argument('--threshold', '-t', type=int, default=config['threshold'], help='the minhash threshold value (see README)', required=False)
   parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
   parser.add_argument('--banish_distance', '-bd', type=int, default=config['banish_distance'], help='the graph distance to travel when banishing linked matches', required=False)
@@ -136,7 +146,7 @@ def download_client(**kwargs):
       if os.path.exists(former_api_location):
         shutil.rmtree(former_api_location)
   # save select folders before wiping the outputs
-  retained_folders = ['cache'] if kwargs.get('infile_glob') else ['cache', 'api']
+  retained_folders = ['db', 'cache'] if kwargs.get('infile_glob') else ['cache']
   for i in retained_folders:
     if os.path.exists(os.path.join(kwargs['output'], i)):
       shutil.move(os.path.join(kwargs['output'], i), os.getcwd())
@@ -153,6 +163,9 @@ def download_client(**kwargs):
 
 def process_texts(**kwargs):
   '''Process the user's texts using the specified params'''
+
+  # typecheck inputs
+  assert kwargs['min_sim'] >= 1 and kwargs['min_sim'] <= 100
 
   # identify the infiles
   infiles = sorted(glob.glob(kwargs['infile_glob']))
@@ -197,6 +210,10 @@ def process_texts(**kwargs):
     path = os.path.join(kwargs['output'], 'api', 'matches', str(i))
     if not os.path.exists(path):
       os.makedirs(path)
+
+  # save JSON with the list of infiles
+  with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
+    json.dump(kwargs['infiles'], out)
 
   # create the db
   initialize_db(**kwargs)
@@ -258,10 +275,9 @@ def get_file_minhashes(file_path, **kwargs):
   # run minhash algorithm on file
   l = []
   for window_idx, window in enumerate(get_windows(file_path, **get_cacheable(kwargs))):
-    m = MinHash(num_perm=kwargs['permutations'])
-    for w in ngrams(window.lower(), kwargs['chargram_length']):
-      m.update(''.join(w).encode('utf-8'))
-    l.append(m.hashvalues)
+    char_hashes = fastNGramHashes(window.lower().encode(kwargs['encoding']), n=kwargs['chargram_length'])
+    fingerprint = hasher.fingerprint(char_hashes, cuda=CUDA_AVAILABLE)
+    l.append(fingerprint)
   minhashes = np.array(l)
   # save the minhashes array unless running in memory mode
   if not kwargs['in_memory']:
@@ -291,14 +307,15 @@ def process_candidate_hashbands(l, **kwargs):
   if kwargs['verbose']:
     print(' * processing match candidate block')
   pool = multiprocessing.Pool()
-  l = list(subdivide(l, len(l) // multiprocessing.cpu_count()))
+  l = list(subdivide(l, len(l) // 1)) # multiprocessing.cpu_count()
   f = functools.partial(get_hashband_match_candidates, **kwargs)
-  writes = []
+  writes = set()
   for idx, i in enumerate(pool.map(f, l)):
-    writes += i
+    writes.update(i)
     if len(writes) >= kwargs['write_frequency'] or idx == len(l)-1:
       write_candidates(writes, **kwargs)
-      writes = []
+      writes = set()
+  if writes: write_candidates(writes, **kwargs)
   pool.close()
   pool.join()
 
@@ -359,10 +376,11 @@ def validate_file_matches(args, **kwargs):
     file_b_windows = list(get_windows(kwargs['infiles'][file_id_b], **get_cacheable(kwargs)))
     text_a = file_a_windows[window_id_a]
     text_b = file_b_windows[window_id_b]
-    if ratio(text_a, text_b) > kwargs['min_sim'] * 0.75:
-      sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio()
+    sim = ratio(text_a, text_b) * 100
+    if sim > (kwargs['min_sim'] * 0.85):
+      sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
       if sim >= kwargs['min_sim']:
-        matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim*100)])
+        matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
   write_matches(matches, **kwargs)
 
 
@@ -409,10 +427,12 @@ def format_file_matches(args, **kwargs):
             cluster['b'].add(b_i)
             cluster['sim'].append(d[a_i][b_i])
       if cluster['a'] and cluster['b']:
+        sim = int(sum(cluster['sim']) / len(cluster['sim']))
+        if sim < kwargs['min_sim']: continue
         clusters.append({
           'a': sorted(cluster['a']),
           'b': sorted(cluster['b']),
-          'sim': int(sum(cluster['sim']) / len(cluster['sim'])),
+          'sim': sim,
         })
   # format the matches, then save into both file_id_a and file_id_b directories
   formatted = format_matches(file_id_a, file_id_b, clusters, **kwargs)
@@ -513,7 +533,6 @@ def get_sequences(l):
 
 def create_all_match_json(**kwargs):
   '''Create the output JSON to be consumed by the web client'''
-  pool = multiprocessing.Pool()
   # combine all the matches in each match directory into a composite match file
   guid_to_int = defaultdict(lambda: len(guid_to_int))
   for match_directory in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
@@ -527,10 +546,6 @@ def create_all_match_json(**kwargs):
     with open(os.path.join(match_directory + '.json'), 'w') as out:
       json.dump(l, out)
     shutil.rmtree(match_directory)
-
-  # save JSON with the list of infiles
-  with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
-    json.dump(kwargs['infiles'], out)
 
   # map each author and title to the files in which that string occurs and save those maps
   authors = [kwargs['metadata'].get(os.path.basename(i), {}).get('author', 'Unknown') for i in kwargs['infiles']]
