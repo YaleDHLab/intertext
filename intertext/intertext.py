@@ -696,8 +696,7 @@ def write_hashbands(writes, **kwargs):
       d[hashband].append([file_id, window_id])
     for hashband in d:
       out_dir = os.path.join(kwargs['output'], 'db', 'hashbands', hashband[0:2])
-      if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+      make_dir(out_dir)
       path = os.path.join(out_dir, hashband[2:4])
       with open(path, 'a') as out:
         s = ''
@@ -727,8 +726,7 @@ def write_candidates(writes, **kwargs):
     for file_id_a in d:
       for file_id_b in d[file_id_a]:
         out_dir = os.path.join(kwargs['output'], 'db', 'candidates', str(file_id_a))
-        if not os.path.exists(out_dir):
-          os.makedirs(out_dir)
+        make_dir(out_dir)
         path = os.path.join(out_dir, str(file_id_b))
         s = ''
         for row in d[file_id_a][file_id_b]:
@@ -759,8 +757,7 @@ def write_matches(writes, **kwargs):
     for file_id_a in d:
       for file_id_b in d[file_id_a]:
         out_dir = os.path.join(kwargs['output'], 'db', 'matches', str(file_id_a))
-        if not os.path.exists(out_dir):
-          os.makedirs(out_dir)
+        make_dir(out_dir)
         path = os.path.join(out_dir, str(file_id_b))
         s = ''
         for row in d[file_id_a][file_id_b]:
@@ -983,6 +980,15 @@ def get_cacheable(*args):
     for i in args[1:]:
       kwargs.update(i)
   return {k: kwargs[k] for k in kwargs if isinstance(kwargs[k], Hashable)}
+
+
+def make_dir(path):
+  '''Make a directory if it doesn't exist'''
+  if not os.path.exists(path):
+    try:
+      os.makedirs(path)
+    except:
+      pass
 
 
 if __name__ == '__main__':
