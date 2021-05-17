@@ -35,6 +35,7 @@ except:
   CUDA_AVAILABLE = False
 
 
+# global config
 config = {
   'infile_glob': '',
   'banish_glob': '',
@@ -65,7 +66,6 @@ config = {
 
 '''
 TODO:
-  * add GPU acceleration for minhashing
   * add flag to indicate if same-author matches are allowed
   * add support for CSV metadata
   * add support for xml + txt in same run
@@ -77,6 +77,7 @@ TODO:
 # path globals
 source_location = os.path.dirname(os.path.realpath(__file__))
 client_location = os.path.join(source_location, 'client')
+cache_location = os.path.join(source_location, 'cache')
 
 
 # db globals
@@ -145,20 +146,11 @@ def download_client(**kwargs):
       former_api_location = os.path.join(client_location, 'build', 'api')
       if os.path.exists(former_api_location):
         shutil.rmtree(former_api_location)
-  # save select folders before wiping the outputs
-  retained_folders = ['db', 'cache'] if kwargs.get('infile_glob') else ['cache']
-  for i in retained_folders:
-    if os.path.exists(os.path.join(kwargs['output'], i)):
-      shutil.move(os.path.join(kwargs['output'], i), os.getcwd())
   # copy the `build` directory to the output directory
   if os.path.exists(kwargs['output']):
     shutil.rmtree(kwargs['output'])
   # copy the web client
   shutil.copytree(os.path.join(client_location, 'build'), kwargs['output'])
-  # copy the retained folders
-  for i in retained_folders:
-    if os.path.exists(i):
-      shutil.move(i, kwargs['output'])
 
 
 def process_texts(**kwargs):
@@ -202,7 +194,7 @@ def process_texts(**kwargs):
       os.makedirs(path)
 
   for i in ['minhashes']:
-    path = os.path.join(kwargs['output'], 'cache', i)
+    path = os.path.join(cache_location, i)
     if not os.path.exists(path):
       os.makedirs(path)
 
@@ -269,7 +261,7 @@ def get_file_hashbands(args, **kwargs):
 
 def get_file_minhashes(file_path, **kwargs):
   '''Return the minhash array for a file'''
-  minhash_path = os.path.join(kwargs['output'], 'cache', 'minhashes', os.path.basename(file_path) + '.npy')
+  minhash_path = os.path.join(cache_location, 'minhashes', os.path.basename(file_path) + '.npy')
   if os.path.exists(minhash_path):
     return np.load(minhash_path)
   # run minhash algorithm on file
@@ -649,7 +641,7 @@ def initialize_db(**kwargs):
       cursor.execute('CREATE TABLE matches (file_id_a INTEGER, file_id_b INTEGER, window_id_a INTEGER, window_id_b INTEGER, similarity INTEGER);')
   else:
     for i in ['hashbands', 'candidates', 'matches']:
-      path = os.path.join(kwargs['output'], 'db', i)
+      path = os.path.join('db', i)
       if not os.path.exists(path):
         os.makedirs(path)
 
@@ -659,7 +651,7 @@ def get_db(initialize=False, **kwargs):
   if kwargs['in_memory']:
     db_location = 'file:memdb1?mode=memory&cache=shared'
   else:
-    db_location = os.path.join(kwargs['output'], 'cache', 'intertext.db')
+    db_location = os.path.join(cache_location, 'intertext.db')
   db = sqlite3.connect(db_location, uri=True, timeout=60)
   if initialize:
     db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
@@ -668,7 +660,7 @@ def get_db(initialize=False, **kwargs):
     db.execute('PRAGMA temp_store = 2;')
   else:
     db.execute('PRAGMA temp_store = 1;')
-    db.execute('PRAGMA temp_store_directory = "{}"'.format(os.path.join(kwargs['output'], 'cache')))
+    db.execute('PRAGMA temp_store_directory = "{}"'.format(cache_location))
   return db
 
 
@@ -695,7 +687,7 @@ def write_hashbands(writes, **kwargs):
     for hashband, file_id, window_id in writes:
       d[hashband].append([file_id, window_id])
     for hashband in d:
-      out_dir = os.path.join(kwargs['output'], 'db', 'hashbands', hashband[0:2])
+      out_dir = os.path.join('db', 'hashbands', hashband[0:2])
       make_dir(out_dir)
       path = os.path.join(out_dir, hashband[2:4])
       with open(path, 'a') as out:
@@ -725,7 +717,7 @@ def write_candidates(writes, **kwargs):
       d[file_id_a][file_id_b].append([window_id_a, window_id_b])
     for file_id_a in d:
       for file_id_b in d[file_id_a]:
-        out_dir = os.path.join(kwargs['output'], 'db', 'candidates', str(file_id_a))
+        out_dir = os.path.join('db', 'candidates', str(file_id_a))
         make_dir(out_dir)
         path = os.path.join(out_dir, str(file_id_b))
         s = ''
@@ -756,7 +748,7 @@ def write_matches(writes, **kwargs):
       d[file_id_a][file_id_b].append([window_id_a, window_id_b, sim])
     for file_id_a in d:
       for file_id_b in d[file_id_a]:
-        out_dir = os.path.join(kwargs['output'], 'db', 'matches', str(file_id_a))
+        out_dir = os.path.join('db', 'matches', str(file_id_a))
         make_dir(out_dir)
         path = os.path.join(out_dir, str(file_id_b))
         s = ''
@@ -795,7 +787,7 @@ def stream_hashbands(**kwargs):
       '''):
         yield row
   else:
-    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'hashbands', '*', '*')):
+    for i in glob.glob(os.path.join('db', 'hashbands', '*', '*')):
       d = defaultdict(list)
       with open(i) as f:
         f = f.read()
@@ -822,7 +814,7 @@ def stream_candidate_file_id_pairs(**kwargs):
       '''):
         yield row
   else:
-    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'candidates', '*')):
+    for i in glob.glob(os.path.join('db', 'candidates', '*')):
       file_id_a = os.path.split(i)[-1]
       for j in glob.glob(os.path.join(i, '*')):
         file_id_b = os.path.split(j)[-1]
@@ -842,7 +834,7 @@ def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
         ''', (file_id_a, file_id_b,)):
         yield i
   else:
-    with open(os.path.join(kwargs['output'], 'db', 'candidates', str(file_id_a), str(file_id_b))) as f:
+    with open(os.path.join('db', 'candidates', str(file_id_a), str(file_id_b))) as f:
       f = f.read()
     for row in f.split(row_delimiter):
       if not row: continue
@@ -857,7 +849,7 @@ def stream_matching_file_id_pairs(**kwargs):
       for i in cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'):
         yield i
   else:
-    for i in glob.glob(os.path.join(kwargs['output'], 'db', 'matches', '*')):
+    for i in glob.glob(os.path.join('db', 'matches', '*')):
       file_id_a = os.path.split(i)[-1]
       for j in glob.glob(os.path.join(i, '*')):
         file_id_b = os.path.split(j)[-1]
@@ -872,7 +864,7 @@ def stream_file_pair_matches(file_id_a, file_id_b, **kwargs):
       for i in cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (file_id_a, file_id_b,)):
         yield i
   else:
-    with open(os.path.join(kwargs['output'], 'db', 'matches', str(file_id_a), str(file_id_b))) as f:
+    with open(os.path.join('db', 'matches', str(file_id_a), str(file_id_b))) as f:
       f = f.read()
       for row in f.split(row_delimiter):
         if not row: continue

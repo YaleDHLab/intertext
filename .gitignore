@@ -4,6 +4,7 @@
 *.ipynb
 *.DS_Store
 *.egg-info
+db
 build
 dist
 data
