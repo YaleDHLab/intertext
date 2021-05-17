@@ -957,7 +957,7 @@ def get_words(path, **kwargs):
     formatted = []
     for idx, i in enumerate(l):
       if i == NEWLINE:
-        if formatted and formatted[-1] += '<br/>'
+        if formatted: formatted[-1] += '<br/>'
       else:
         formatted.append(i)
     return formatted
