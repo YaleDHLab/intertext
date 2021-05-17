@@ -958,7 +958,19 @@ def get_words(path, **kwargs):
       f = f.read()
     if kwargs['strip_diacritics'] and not kwargs.get('display', False):
       f = unidecode(f)
-  return f.split()
+  # format the list of words
+  if kwargs.get('display', False):
+    NEWLINE = '__NEWLINE__'
+    l = f.replace('\n', ' ' + NEWLINE + ' ').split()
+    formatted = []
+    for idx, i in enumerate(l):
+      if i == NEWLINE:
+        formatted[-1] += '<br/>'
+      else:
+        formatted.append(i)
+    return formatted
+  else:
+    return f.split()
 
 
 @functools.lru_cache(maxsize=1024)
