@@ -20,11 +20,15 @@ setup(
     'datasketch==0.2.6',
     'networkx==2.5',
     'nltk==3.4.5',
-    'numpy==1.20.0',
+    'numpy==1.20.1',
     'pymongo==3.3.1',
     'python-Levenshtein==0.12.2',
     'requests==2.24.0',
     'unidecode==1.2.0',
+    'vectorizedMinHash>=0.0.1'
+  ],
+  dependency_links=[
+    'git+https://github.com/yaledhlab/vectorized-minhash.git@0.0.1#egg=vectorizedMinHash-0.0.1'
   ],
   entry_points={
     'console_scripts': [
