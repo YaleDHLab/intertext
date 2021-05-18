@@ -186,8 +186,9 @@ def process_texts(**kwargs):
       } for i in kwargs['infiles']
     }
 
-  # remove extant db
-  shutil.rmtree('db')
+  # remove extant db if package has been previously run
+  if os.path.isdir('db'):
+    shutil.rmtree('db')
 
   # create directories
   for i in ['matches', 'scatterplots', 'indices']:
