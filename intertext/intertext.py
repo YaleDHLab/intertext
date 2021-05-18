@@ -77,7 +77,7 @@ TODO:
 # path globals
 source_location = os.path.dirname(os.path.realpath(__file__))
 client_location = os.path.join(source_location, 'client')
-cache_location = os.path.join(source_location, 'cache')
+cache_location = os.path.join(os.getcwd(), 'cache')
 
 
 # db globals
@@ -261,8 +261,9 @@ def get_file_hashbands(args, **kwargs):
 
 def get_file_minhashes(file_path, **kwargs):
   '''Return the minhash array for a file'''
-  minhash_path = os.path.join(cache_location, 'minhashes', os.path.basename(file_path) + '.npy')
+  minhash_path = os.path.join(cache_location, 'minhashes', file_path.replace(os.path.sep, '___') + '.npy')
   if os.path.exists(minhash_path):
+    print(' * loading', file_path, 'minhashes from cache')
     return np.load(minhash_path)
   # run minhash algorithm on file
   l = []
@@ -271,9 +272,7 @@ def get_file_minhashes(file_path, **kwargs):
     fingerprint = hasher.fingerprint(char_hashes, cuda=CUDA_AVAILABLE)
     l.append(fingerprint)
   minhashes = np.array(l)
-  # save the minhashes array unless running in memory mode
-  if not kwargs['in_memory']:
-    np.save(minhash_path, minhashes)
+  np.save(minhash_path, minhashes)
   return minhashes
 
 
@@ -366,8 +365,14 @@ def validate_file_matches(args, **kwargs):
     file_id_a, file_id_b, window_id_a, window_id_b = i
     file_a_windows = list(get_windows(kwargs['infiles'][file_id_a], **get_cacheable(kwargs)))
     file_b_windows = list(get_windows(kwargs['infiles'][file_id_b], **get_cacheable(kwargs)))
-    text_a = file_a_windows[window_id_a]
-    text_b = file_b_windows[window_id_b]
+    try:
+      text_a = file_a_windows[window_id_a]
+      text_b = file_b_windows[window_id_b]
+    except:
+      print(' * window lookout OOB')
+      print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
+      print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
+      continue
     sim = ratio(text_a, text_b) * 100
     if sim > (kwargs['min_sim'] * 0.85):
       sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100

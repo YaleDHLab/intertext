@@ -8,5 +8,6 @@ db
 build
 dist
 data
+cache
 output
 .ipynb_checkpoints
