@@ -61,6 +61,7 @@ config = {
   'strip_diacritics': False,
   'verbose': False,
   'db': 'sqlite',
+  'only': None,
 }
 
 
@@ -114,6 +115,7 @@ def parse():
   parser.add_argument('--update_client', default=config['update_client'], help='boolean indicating whether to update the stored client', required=False, action='store_true')
   parser.add_argument('--verbose', '-v', default=config['verbose'], help='if specified, the intertext process will log more operations', required=False, action='store_true')
   parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
+  parser.add_argument('--only', default=config['only'], help='only retain matches that include text from the specified file path', required=False)
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
@@ -185,6 +187,10 @@ def process_texts(**kwargs):
         'title': os.path.basename(i),
       } for i in kwargs['infiles']
     }
+
+  # if the user specified an --only flag, identify that file's index
+  if kwargs.get('only', False):
+    kwargs['only_index'] == kwargs['infiles'].index(kwargs['only'])
 
   # remove extant db if package has been previously run
   if os.path.isdir('db'):
@@ -327,6 +333,8 @@ def get_hashband_match_candidates(args, **kwargs):
       hashband_values.add(tup)
     elif (hashband != last_hashband) or (idx == len(args)-1):
       for a, b in combinations(hashband_values, 2):
+        if kwargs.get('only_index', False):
+          if a != kwargs['only_index'] and b != kwargs['only_index']: continue
         # skip same file matches
         if a[0] == b[0]:
           continue
@@ -377,10 +385,17 @@ def validate_file_matches(args, **kwargs):
       print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
       print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
       continue
+    # run a fast pass to measure
     sim = ratio(text_a, text_b) * 100
     if sim > (kwargs['min_sim'] * 0.85):
       sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
       if sim >= kwargs['min_sim']:
+        # remove matches with predominance of single character words
+        a_singles = [i for i in text_a.split() if len(i) == 1]
+        b_singles = [i for i in text_b.split() if len(i) == 1]
+        if len(a_singles) >= (kwargs['window_length'] * 0.75) or \
+           len(b_singles) >= (kwargs['window_length'] * 0.75):
+          continue
         matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
   write_matches(matches, **kwargs)
 
@@ -661,7 +676,7 @@ def get_db(initialize=False, **kwargs):
     db_location = 'file:memdb1?mode=memory&cache=shared'
   else:
     db_location = os.path.join(cache_location, 'intertext.db')
-  db = sqlite3.connect(db_location, uri=True, timeout=60)
+  db = sqlite3.connect(db_location, uri=True, timeout=2**16)
   if initialize:
     db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
     db.execute('PRAGMA journal_mode = DELETE;') # WAL is fastest
