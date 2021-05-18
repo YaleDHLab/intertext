@@ -69,7 +69,6 @@ TODO:
   * add flag to indicate if same-author matches are allowed
   * add support for CSV metadata
   * add support for xml + txt in same run
-  * throw an error if the disk location is a networked drive
   * make db swapable for MySQL
 '''
 
@@ -186,6 +185,9 @@ def process_texts(**kwargs):
         'title': os.path.basename(i),
       } for i in kwargs['infiles']
     }
+
+  # remove extant db
+  shutil.rmtree('db')
 
   # create directories
   for i in ['matches', 'scatterplots', 'indices']:
@@ -369,7 +371,7 @@ def validate_file_matches(args, **kwargs):
       text_a = file_a_windows[window_id_a]
       text_b = file_b_windows[window_id_b]
     except:
-      print(' * window lookout OOB')
+      print(' * window lookup OOB')
       print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
       print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
       continue
