@@ -60,7 +60,7 @@ config = {
   'update_client': False,
   'strip_diacritics': False,
   'verbose': False,
-  'db': 'disk',
+  'db': 'sqlite',
 }
 
 
@@ -215,7 +215,7 @@ def process_texts(**kwargs):
 
   # minhash files & store hashbands in db
   print(' * creating minhashes')
-  print('Using CUDA: ' + str(CUDA_AVAILABLE))
+  print(' * using CUDA: ' + str(CUDA_AVAILABLE))
   get_all_hashbands(**kwargs)
 
   # find all hashbands that have multiple distict file_ids
