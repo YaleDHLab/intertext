@@ -253,11 +253,11 @@ def get_file_hashbands(args, **kwargs):
   file_idx, file_path = args
   minhashes = get_file_minhashes(file_path, **kwargs)
   # get the hashbands for this minhash
-  hashbands = []
+  hashbands = set()
   for window_idx, minhash in enumerate(minhashes):
     for hdx, h in enumerate(ngrams(minhash, kwargs['hashband_length'])):
       if hdx % kwargs['hashband_step'] == 0:
-        hashbands.append(['.'.join([str(i) for i in h]), file_idx, window_idx])
+        hashbands.add(tuple(['.'.join([str(i) for i in h]), file_idx, window_idx]))
   write_hashbands(hashbands, **kwargs)
 
 
