@@ -4,4 +4,4 @@ rm -rf intertext.egg-info/
 rm -rf db/
 rm -rf output/
 rm -rf cache/
-rm cache/intertext.db
+rm -f cache/intertext.db

@@ -188,7 +188,10 @@ def process_texts(**kwargs):
     }
 
   # if the user specified an --only flag, identify that file's index
-  kwargs['only_index'] = kwargs['infiles'].index(kwargs['only']) if kwargs.get('only') != None else None
+  if kwargs.get('only', None) != None:
+    kwargs['only_index'] = kwargs['infiles'].index(kwargs['only'])
+  else:
+    kwargs['only_index'] = None
 
   # remove extant db if package has been previously run
   if os.path.isdir('db'):
@@ -306,7 +309,7 @@ def process_candidate_hashbands(l, **kwargs):
   if kwargs['verbose']:
     print(' * processing match candidate block')
   pool = multiprocessing.Pool()
-  l = list(subdivide(l, len(l) // 1)) #  multiprocessing.cpu_count()
+  l = list(subdivide(l, len(l) // multiprocessing.cpu_count()))
   f = functools.partial(get_hashband_match_candidates, **kwargs)
   writes = set()
   for idx, i in enumerate(pool.map(f, l)):
@@ -330,6 +333,7 @@ def get_hashband_match_candidates(args, **kwargs):
     if hashband == last_hashband:
       hashband_values.add(tup)
     elif (hashband != last_hashband) or (idx == len(args)-1):
+      last_hashband = hashband
       if kwargs.get('only_index') != None:
         if not any([i[0] == kwargs['only_index'] for i in hashband_values]):
           continue
@@ -345,7 +349,6 @@ def get_hashband_match_candidates(args, **kwargs):
         else:
           results.append(tuple([b[0], a[0], b[1], a[1]]))
       hashband_values = set([tup])
-    last_hashband = hashband
   return set(results)
 
 
