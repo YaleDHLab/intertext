@@ -57,9 +57,10 @@ config = {
   'client': '0.0.1a',
   'update_client': False,
   'strip_diacritics': False,
-  'verbose': False,
   'db': 'sqlite',
   'only': None,
+  'update_metadata': False,
+  'verbose': False,
 }
 
 
@@ -113,6 +114,7 @@ def parse():
   parser.add_argument('--verbose', '-v', default=config['verbose'], help='if specified, the intertext process will log more operations', required=False, action='store_true')
   parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
   parser.add_argument('--only', default=config['only'], help='only retain matches that include text from the specified file path', required=False)
+  parser.add_argument('--update_metadata', default=config['update_metadata'], help='skip all processing and only update the metadata for a plot', action='store_true')
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
@@ -191,11 +193,41 @@ def process_texts(**kwargs):
   else:
     kwargs['only_index'] = None
 
-  # remove extant db if package has been previously run
-  if os.path.isdir('db'):
-    shutil.rmtree('db')
+  # update the metadata and exit if requested
+  if not kwargs.get('update_metadata'):
 
-  # create directories
+    # remove extant db and prepare output directories
+    if os.path.isdir('db'): shutil.rmtree('db')
+    prepare_output_directories(**kwargs)
+
+    # create the db
+    initialize_db('hashbands', **kwargs)
+    initialize_db('candidates', **kwargs)
+    initialize_db('matches', **kwargs)
+
+    # minhash files & store hashbands in db
+    print(' * creating minhashes - using CUDA:', CUDA_AVAILABLE)
+    get_all_hashbands(**kwargs)
+
+    # find all hashbands that have multiple distict file_ids
+    print(' * identifying match candidates')
+    get_all_match_candidates(**kwargs)
+
+    # validate matches from among the candidates
+    print(' * validating matches')
+    validate_all_matches(**kwargs)
+
+  # format matches into JSON for client consumption
+  print(' * formatting matches')
+  format_all_matches(**kwargs)
+
+  # combine all matches into a single match object
+  print(' * formatting JSON outputs')
+  create_all_match_json(**kwargs)
+
+
+def prepare_output_directories(**kwargs):
+  '''Create the folders that store output objects'''
   for i in ['matches', 'scatterplots', 'indices']:
     path = os.path.join(kwargs['output'], 'api', i)
     if not os.path.exists(path):
@@ -213,33 +245,7 @@ def process_texts(**kwargs):
 
   # save JSON with the list of infiles
   with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
-    json.dump(kwargs['infiles'], out)
-
-  # create the db
-  initialize_db('hashbands', **kwargs)
-  initialize_db('candidates', **kwargs)
-  initialize_db('matches', **kwargs)
-
-  # minhash files & store hashbands in db
-  print(' * creating minhashes')
-  print(' * using CUDA: ' + str(CUDA_AVAILABLE))
-  get_all_hashbands(**kwargs)
-
-  # find all hashbands that have multiple distict file_ids
-  print(' * identifying match candidates')
-  get_all_match_candidates(**kwargs)
-
-  # validate matches from among the candidates
-  print(' * validating matches')
-  validate_all_matches(**kwargs)
-
-  # format matches into JSON for client consumption
-  print(' * formatting matches')
-  format_all_matches(**kwargs)
-
-  # combine all matches into a single match object
-  print(' * formatting JSON outputs')
-  create_all_match_json(**kwargs)
+    json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
 
 
 ##
@@ -306,8 +312,7 @@ def get_all_match_candidates(**kwargs):
 
 def process_candidate_hashbands(l, **kwargs):
   '''Given a set of hashbands, subdivide into processes to find match candidates for each'''
-  if kwargs['verbose']:
-    print(' * processing match candidate block')
+  if kwargs['verbose']: print(' * processing match candidate block')
   pool = multiprocessing.Pool()
   l = list(subdivide(l, len(l) // multiprocessing.cpu_count()))
   f = functools.partial(get_hashband_match_candidates, **kwargs)
@@ -793,6 +798,7 @@ def repair_database(**kwargs):
 
 def stream_hashbands(**kwargs):
   '''Stream [hashband, file_id, window_id] sorted by hashband'''
+  if kwargs.get('verbose'): print(' * querying for hashbands')
   if kwargs.get('db') == 'sqlite':
     with closing(get_db('hashbands', **kwargs)) as db:
       cursor = db.cursor()
@@ -827,6 +833,7 @@ def stream_hashbands(**kwargs):
 
 def stream_candidate_file_id_pairs(**kwargs):
   '''Stream [file_id_a, file_id_b] pairs for files with matching hashbands'''
+  if kwargs.get('verbose'): print(' * querying for candidate file id pairs')
   if kwargs.get('db') == 'sqlite':
     with closing(get_db('candidates', **kwargs)) as db:
       cursor = db.cursor()
@@ -846,6 +853,7 @@ def stream_candidate_file_id_pairs(**kwargs):
 
 def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
   '''Stream [file_id_a, file_id_b, window_id_a, window_id_b] for matching hashbands'''
+  if kwargs.get('verbose'): print(' * querying for matching candidate windows')
   if kwargs.get('db') == 'sqlite':
     with closing(get_db('candidates', **kwargs)) as db:
       cursor = db.cursor()
