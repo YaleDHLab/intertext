@@ -56,7 +56,6 @@ config = {
   'banish_distance': 4,
   'max_file_sim': None,
   'client': '0.0.1a',
-  'in_memory': False,
   'update_client': False,
   'strip_diacritics': False,
   'verbose': False,
@@ -190,7 +189,7 @@ def process_texts(**kwargs):
 
   # if the user specified an --only flag, identify that file's index
   if kwargs.get('only', False):
-    kwargs['only_index'] == kwargs['infiles'].index(kwargs['only'])
+    kwargs['only_index'] = kwargs['infiles'].index(kwargs['only'])
 
   # remove extant db if package has been previously run
   if os.path.isdir('db'):
@@ -334,7 +333,7 @@ def get_hashband_match_candidates(args, **kwargs):
     elif (hashband != last_hashband) or (idx == len(args)-1):
       for a, b in combinations(hashband_values, 2):
         if kwargs.get('only_index', False):
-          if a != kwargs['only_index'] and b != kwargs['only_index']: continue
+          if (a[0] != kwargs['only_index']) and (b[0] != kwargs['only_index']): continue
         # skip same file matches
         if a[0] == b[0]:
           continue
@@ -672,19 +671,13 @@ def initialize_db(**kwargs):
 
 def get_db(initialize=False, **kwargs):
   '''Return a Sqlite DB'''
-  if kwargs['in_memory']:
-    db_location = 'file:memdb1?mode=memory&cache=shared'
-  else:
-    db_location = os.path.join(cache_location, 'intertext.db')
+  db_location = os.path.join(cache_location, 'intertext.db')
   db = sqlite3.connect(db_location, uri=True, timeout=2**16)
   if initialize:
     db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
     db.execute('PRAGMA journal_mode = DELETE;') # WAL is fastest
-  if kwargs['in_memory']:
-    db.execute('PRAGMA temp_store = 2;')
-  else:
-    db.execute('PRAGMA temp_store = 1;')
-    db.execute('PRAGMA temp_store_directory = "{}"'.format(cache_location))
+  db.execute('PRAGMA temp_store = 1;')
+  db.execute('PRAGMA temp_store_directory = "{}"'.format(cache_location))
   return db
 
 

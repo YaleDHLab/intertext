@@ -28,7 +28,7 @@ setup(
     'vectorizedMinHash>=0.0.2'
   ],
   dependency_links=[
-    'git+https://github.com/yaledhlab/vectorized-minhash.git@0.0.1#egg=vectorizedMinHash-0.0.1'
+    'git+https://github.com/yaledhlab/vectorized-minhash.git@0.0.2#egg=vectorizedMinHash-0.0.2'
   ],
   entry_points={
     'console_scripts': [
