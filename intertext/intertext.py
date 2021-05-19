@@ -51,7 +51,6 @@ config = {
   'write_frequency': 10**5,
   'slide_length': 4,
   'chargram_length': 4,
-  'threshold': 0.5,
   'min_sim': 50,
   'banish_distance': 4,
   'max_file_sim': None,
@@ -102,10 +101,9 @@ def parse():
   parser.add_argument('--chargram_length', '-cl', type=int, default=config['chargram_length'], help='the number of characters per character shingle', required=False)
   parser.add_argument('--write_frequency', '-wf', type=int, default=config['write_frequency'], help='the max number of write operations to store in RAM')
   parser.add_argument('--slide_length', '-l', type=int, default=config['slide_length'], help='the length to slide windows when processing files (see README)', required=False)
-  parser.add_argument('--threshold', '-t', type=int, default=config['threshold'], help='the minhash threshold value (see README)', required=False)
-  parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
   parser.add_argument('--banish_distance', '-bd', type=int, default=config['banish_distance'], help='the graph distance to travel when banishing linked matches', required=False)
-  parser.add_argument('--max_file_sim', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
+  parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
+  parser.add_argument('--max_file_sim', '-fs', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
   parser.add_argument('--output', '-o', type=str, default=config['output'], help='the output location', required=False)
   parser.add_argument('--client', '-c', type=str, default=config['client'], help='the client version to fetch and display', required=False)
   parser.add_argument('--xml_base_tag', type=str, default=config['xml_base_tag'], help='if specified, text within this parent tag will be parsed', required=False)
@@ -218,7 +216,9 @@ def process_texts(**kwargs):
     json.dump(kwargs['infiles'], out)
 
   # create the db
-  initialize_db(**kwargs)
+  initialize_db('hashbands', **kwargs)
+  initialize_db('candidates', **kwargs)
+  initialize_db('matches', **kwargs)
 
   # minhash files & store hashbands in db
   print(' * creating minhashes')
@@ -657,10 +657,10 @@ def write_scatterplots(**kwargs):
 ##
 
 
-def initialize_db(**kwargs):
+def initialize_db(db_name, **kwargs):
   '''Run all setup steps to create the database'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(initialize=True, **kwargs)) as db:
+    with closing(get_db(db_name, initialize=True, **kwargs)) as db:
       cursor = db.cursor()
       cursor.execute('DROP TABLE IF EXISTS hashbands;')
       cursor.execute('DROP TABLE IF EXISTS candidates;')
@@ -675,9 +675,9 @@ def initialize_db(**kwargs):
         os.makedirs(path)
 
 
-def get_db(initialize=False, **kwargs):
+def get_db(db_name, initialize=False, **kwargs):
   '''Return a Sqlite DB'''
-  db_location = os.path.join(cache_location, 'intertext.db')
+  db_location = os.path.join(cache_location, '{}.db'.format(db_name))
   db = sqlite3.connect(db_location, uri=True, timeout=2**16)
   if initialize:
     db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
@@ -698,7 +698,7 @@ def write_hashbands(writes, **kwargs):
   if kwargs.get('db') == 'sqlite':
     try:
       if kwargs['verbose']: print(' * writing', len(writes), 'hashbands')
-      with closing(get_db(**kwargs)) as db:
+      with closing(get_db('hashbands', **kwargs)) as db:
         cursor = db.cursor()
         cursor.executemany('INSERT INTO hashbands (hashband, file_id, window_id) VALUES (?,?,?);', writes)
         db.commit()
@@ -726,7 +726,7 @@ def write_candidates(writes, **kwargs):
   if kwargs.get('db') == 'sqlite':
     try:
       if kwargs['verbose']: print(' * writing', len(writes), 'candidates')
-      with closing(get_db(**kwargs)) as db:
+      with closing(get_db('candidates', **kwargs)) as db:
         cursor = db.cursor()
         cursor.executemany('INSERT OR IGNORE INTO candidates (file_id_a, file_id_b, window_id_a, window_id_b) VALUES (?,?,?,?);', writes)
         db.commit()
@@ -756,7 +756,7 @@ def write_matches(writes, **kwargs):
     try:
       if writes:
         if kwargs['verbose']: print(' * writing', len(writes), 'matches')
-        with closing(get_db(**kwargs)) as db:
+        with closing(get_db('matches', **kwargs)) as db:
           cursor = db.cursor()
           cursor.executemany('INSERT INTO matches (file_id_a, file_id_b, window_id_a, window_id_b, similarity) VALUES (?,?,?,?,?);', writes)
           db.commit()
@@ -794,9 +794,8 @@ def repair_database(**kwargs):
 def stream_hashbands(**kwargs):
   '''Stream [hashband, file_id, window_id] sorted by hashband'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(**kwargs)) as db:
+    with closing(get_db('hashbands', **kwargs)) as db:
       cursor = db.cursor()
-      rows = []
       for row in cursor.execute('''
         WITH file_id_counts AS (
           SELECT hashband, COUNT(DISTINCT(file_id)) as count
@@ -829,7 +828,7 @@ def stream_hashbands(**kwargs):
 def stream_candidate_file_id_pairs(**kwargs):
   '''Stream [file_id_a, file_id_b] pairs for files with matching hashbands'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(**kwargs)) as db:
+    with closing(get_db('candidates', **kwargs)) as db:
       cursor = db.cursor()
       for row in cursor.execute('''
         SELECT DISTINCT file_id_a, file_id_b
@@ -848,7 +847,7 @@ def stream_candidate_file_id_pairs(**kwargs):
 def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
   '''Stream [file_id_a, file_id_b, window_id_a, window_id_b] for matching hashbands'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(**kwargs)) as db:
+    with closing(get_db('candidates', **kwargs)) as db:
       cursor = db.cursor()
       for i in cursor.execute('''
           SELECT DISTINCT file_id_a, file_id_b, window_id_a, window_id_b
@@ -868,7 +867,7 @@ def stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
 def stream_matching_file_id_pairs(**kwargs):
   '''Stream [file_id_a, file_id_b] for file ids that have verified matches'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(**kwargs)) as db:
+    with closing(get_db('matches', **kwargs)) as db:
       cursor = db.cursor()
       for i in cursor.execute('SELECT DISTINCT file_id_a, file_id_b FROM matches;'):
         yield i
@@ -883,7 +882,7 @@ def stream_matching_file_id_pairs(**kwargs):
 def stream_file_pair_matches(file_id_a, file_id_b, **kwargs):
   '''Stream [file_id_a, file_id_b, window_id_a, window_id_b, similarity] for a match pair'''
   if kwargs.get('db') == 'sqlite':
-    with closing(get_db(**kwargs)) as db:
+    with closing(get_db('matches', **kwargs)) as db:
       cursor = db.cursor()
       for i in cursor.execute('SELECT * FROM matches WHERE file_id_a = ? AND file_id_b = ?', (file_id_a, file_id_b,)):
         yield i
