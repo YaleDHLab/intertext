@@ -188,8 +188,7 @@ def process_texts(**kwargs):
     }
 
   # if the user specified an --only flag, identify that file's index
-  if kwargs.get('only', False):
-    kwargs['only_index'] = kwargs['infiles'].index(kwargs['only'])
+  kwargs['only_index'] = kwargs['infiles'].index(kwargs['only']) if kwargs.get('only') != None else None
 
   # remove extant db if package has been previously run
   if os.path.isdir('db'):
@@ -307,7 +306,7 @@ def process_candidate_hashbands(l, **kwargs):
   if kwargs['verbose']:
     print(' * processing match candidate block')
   pool = multiprocessing.Pool()
-  l = list(subdivide(l, len(l) // 1)) # multiprocessing.cpu_count()
+  l = list(subdivide(l, len(l) // 1)) #  multiprocessing.cpu_count()
   f = functools.partial(get_hashband_match_candidates, **kwargs)
   writes = set()
   for idx, i in enumerate(pool.map(f, l)):
@@ -331,9 +330,13 @@ def get_hashband_match_candidates(args, **kwargs):
     if hashband == last_hashband:
       hashband_values.add(tup)
     elif (hashband != last_hashband) or (idx == len(args)-1):
+      if kwargs.get('only_index') != None:
+        if not any([i[0] == kwargs['only_index'] for i in hashband_values]):
+          continue
       for a, b in combinations(hashband_values, 2):
-        if kwargs.get('only_index', False):
-          if (a[0] != kwargs['only_index']) and (b[0] != kwargs['only_index']): continue
+        if kwargs.get('only_index') != None:
+          if a[0] != kwargs['only_index'] and b[0] != kwargs['only_index']:
+            continue
         # skip same file matches
         if a[0] == b[0]:
           continue
@@ -808,6 +811,7 @@ def stream_hashbands(**kwargs):
       d = defaultdict(list)
       with open(i) as f:
         f = f.read()
+      # accumulate file_id, window id values by hashband to effectively sort by hashband
       for row in f.split(row_delimiter):
         if not row: continue
         hashband, file_id, window_id = row.split(field_delimiter)
