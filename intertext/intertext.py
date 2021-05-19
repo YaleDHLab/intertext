@@ -51,7 +51,6 @@ config = {
   'write_frequency': 10**5,
   'slide_length': 4,
   'chargram_length': 4,
-  'threshold': 0.5,
   'min_sim': 50,
   'banish_distance': 4,
   'max_file_sim': None,
@@ -102,10 +101,9 @@ def parse():
   parser.add_argument('--chargram_length', '-cl', type=int, default=config['chargram_length'], help='the number of characters per character shingle', required=False)
   parser.add_argument('--write_frequency', '-wf', type=int, default=config['write_frequency'], help='the max number of write operations to store in RAM')
   parser.add_argument('--slide_length', '-l', type=int, default=config['slide_length'], help='the length to slide windows when processing files (see README)', required=False)
-  parser.add_argument('--threshold', '-t', type=int, default=config['threshold'], help='the minhash threshold value (see README)', required=False)
-  parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
   parser.add_argument('--banish_distance', '-bd', type=int, default=config['banish_distance'], help='the graph distance to travel when banishing linked matches', required=False)
-  parser.add_argument('--max_file_sim', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
+  parser.add_argument('--min_sim', '-s', type=int, default=config['min_sim'], help='the minimum similarity of matches to retain)', required=False)
+  parser.add_argument('--max_file_sim', '-fs', type=int, default=config['max_file_sim'], help='the maximum similarity between two files such that matches are retained', required=False)
   parser.add_argument('--output', '-o', type=str, default=config['output'], help='the output location', required=False)
   parser.add_argument('--client', '-c', type=str, default=config['client'], help='the client version to fetch and display', required=False)
   parser.add_argument('--xml_base_tag', type=str, default=config['xml_base_tag'], help='if specified, text within this parent tag will be parsed', required=False)
