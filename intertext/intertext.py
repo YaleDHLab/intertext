@@ -56,11 +56,11 @@ config = {
   'banish_distance': 4,
   'max_file_sim': None,
   'client': '0.0.1a',
-  'in_memory': False,
   'update_client': False,
   'strip_diacritics': False,
   'verbose': False,
-  'db': 'disk',
+  'db': 'sqlite',
+  'only': None,
 }
 
 
@@ -114,6 +114,7 @@ def parse():
   parser.add_argument('--update_client', default=config['update_client'], help='boolean indicating whether to update the stored client', required=False, action='store_true')
   parser.add_argument('--verbose', '-v', default=config['verbose'], help='if specified, the intertext process will log more operations', required=False, action='store_true')
   parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
+  parser.add_argument('--only', default=config['only'], help='only retain matches that include text from the specified file path', required=False)
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
@@ -186,6 +187,12 @@ def process_texts(**kwargs):
       } for i in kwargs['infiles']
     }
 
+  # if the user specified an --only flag, identify that file's index
+  if kwargs.get('only', None) != None:
+    kwargs['only_index'] = kwargs['infiles'].index(kwargs['only'])
+  else:
+    kwargs['only_index'] = None
+
   # remove extant db if package has been previously run
   if os.path.isdir('db'):
     shutil.rmtree('db')
@@ -215,7 +222,7 @@ def process_texts(**kwargs):
 
   # minhash files & store hashbands in db
   print(' * creating minhashes')
-  print('Using CUDA: ' + str(CUDA_AVAILABLE))
+  print(' * using CUDA: ' + str(CUDA_AVAILABLE))
   get_all_hashbands(**kwargs)
 
   # find all hashbands that have multiple distict file_ids
@@ -255,11 +262,11 @@ def get_file_hashbands(args, **kwargs):
   file_idx, file_path = args
   minhashes = get_file_minhashes(file_path, **kwargs)
   # get the hashbands for this minhash
-  hashbands = []
+  hashbands = set()
   for window_idx, minhash in enumerate(minhashes):
     for hdx, h in enumerate(ngrams(minhash, kwargs['hashband_length'])):
       if hdx % kwargs['hashband_step'] == 0:
-        hashbands.append(['.'.join([str(i) for i in h]), file_idx, window_idx])
+        hashbands.add(tuple(['.'.join([str(i) for i in h]), file_idx, window_idx]))
   write_hashbands(hashbands, **kwargs)
 
 
@@ -302,7 +309,7 @@ def process_candidate_hashbands(l, **kwargs):
   if kwargs['verbose']:
     print(' * processing match candidate block')
   pool = multiprocessing.Pool()
-  l = list(subdivide(l, len(l) // 1)) # multiprocessing.cpu_count()
+  l = list(subdivide(l, len(l) // multiprocessing.cpu_count()))
   f = functools.partial(get_hashband_match_candidates, **kwargs)
   writes = set()
   for idx, i in enumerate(pool.map(f, l)):
@@ -326,7 +333,14 @@ def get_hashband_match_candidates(args, **kwargs):
     if hashband == last_hashband:
       hashband_values.add(tup)
     elif (hashband != last_hashband) or (idx == len(args)-1):
+      last_hashband = hashband
+      if kwargs.get('only_index') != None:
+        if not any([i[0] == kwargs['only_index'] for i in hashband_values]):
+          continue
       for a, b in combinations(hashband_values, 2):
+        if kwargs.get('only_index') != None:
+          if a[0] != kwargs['only_index'] and b[0] != kwargs['only_index']:
+            continue
         # skip same file matches
         if a[0] == b[0]:
           continue
@@ -335,7 +349,6 @@ def get_hashband_match_candidates(args, **kwargs):
         else:
           results.append(tuple([b[0], a[0], b[1], a[1]]))
       hashband_values = set([tup])
-    last_hashband = hashband
   return set(results)
 
 
@@ -377,10 +390,17 @@ def validate_file_matches(args, **kwargs):
       print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
       print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
       continue
+    # run a fast pass to measure
     sim = ratio(text_a, text_b) * 100
     if sim > (kwargs['min_sim'] * 0.85):
       sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
       if sim >= kwargs['min_sim']:
+        # remove matches with predominance of single character words
+        a_singles = [i for i in text_a.split() if len(i) == 1]
+        b_singles = [i for i in text_b.split() if len(i) == 1]
+        if len(a_singles) >= (kwargs['window_length'] * 0.75) or \
+           len(b_singles) >= (kwargs['window_length'] * 0.75):
+          continue
         matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
   write_matches(matches, **kwargs)
 
@@ -657,19 +677,13 @@ def initialize_db(**kwargs):
 
 def get_db(initialize=False, **kwargs):
   '''Return a Sqlite DB'''
-  if kwargs['in_memory']:
-    db_location = 'file:memdb1?mode=memory&cache=shared'
-  else:
-    db_location = os.path.join(cache_location, 'intertext.db')
-  db = sqlite3.connect(db_location, uri=True, timeout=60)
+  db_location = os.path.join(cache_location, 'intertext.db')
+  db = sqlite3.connect(db_location, uri=True, timeout=2**16)
   if initialize:
     db.execute('PRAGMA synchronous = EXTRA;') # OFF is fastest
     db.execute('PRAGMA journal_mode = DELETE;') # WAL is fastest
-  if kwargs['in_memory']:
-    db.execute('PRAGMA temp_store = 2;')
-  else:
-    db.execute('PRAGMA temp_store = 1;')
-    db.execute('PRAGMA temp_store_directory = "{}"'.format(cache_location))
+  db.execute('PRAGMA temp_store = 1;')
+  db.execute('PRAGMA temp_store_directory = "{}"'.format(cache_location))
   return db
 
 
@@ -800,6 +814,7 @@ def stream_hashbands(**kwargs):
       d = defaultdict(list)
       with open(i) as f:
         f = f.read()
+      # accumulate file_id, window id values by hashband to effectively sort by hashband
       for row in f.split(row_delimiter):
         if not row: continue
         hashband, file_id, window_id = row.split(field_delimiter)
