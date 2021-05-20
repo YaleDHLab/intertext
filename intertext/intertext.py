@@ -39,20 +39,23 @@ except:
 config = {
   'infile_glob': '',
   'banish_glob': '',
+  'exclude_glob': '',
   'output': 'output',
   'metadata': {},
   'encoding': 'utf8',
   'xml_base_tag': None,
   'xml_remove_tags': tuple(),
-  'window_length': 14,
-  'hashband_length': 4,
-  'hashband_step': 3,
   'batch_size': 10**5,
   'write_frequency': 10**5,
-  'slide_length': 4,
   'chargram_length': 4,
-  'min_sim': 50,
+  'window_length': 14,
+  'slide_length': 4,
+  'hashband_length': 4,
+  'hashband_step': 3,
   'banish_distance': 4,
+  'min_sim': 50,
+  'excluded_file_ids': tuple(),
+  'banish_file_ids': tuple(),
   'max_file_sim': None,
   'client': '0.0.1a',
   'update_client': False,
@@ -70,6 +73,7 @@ TODO:
   * add support for CSV metadata
   * add support for xml + txt in same run
   * make db swapable for MySQL
+  * if resuming, process output/files.json to get the files and file ids
 '''
 
 
@@ -93,7 +97,8 @@ def parse():
   description = 'Discover and visualize text reuse'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--infiles', '-i', type=str, default=config['infile_glob'], dest='infile_glob', help='path to a glob of text files to process', required=False)
-  parser.add_argument('--banish', '-b', type=str, default=config['banish_glob'], dest='banish_glob', help='path to a glob of text files to remove from matches', required=False)
+  parser.add_argument('--banish', '-b', type=str, default=config['banish_glob'], dest='banish_glob', help='path to a glob of text files to banish from matches', required=False)
+  parser.add_argument('--exclude', type=str, default=config['exclude_glob'], dest='exclude_glob', help='path to a glob of text files to exclude from matches', required=False)
   parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a JSON metadata file (see README)', required=False)
   parser.add_argument('--encoding', '-e', type=str, default=config['encoding'], help='the encoding of infiles', required=False)
   parser.add_argument('--window_length', '-w', type=int, default=config['window_length'], help='the length of windows when processing files (see README)', required=False)
@@ -156,49 +161,21 @@ def download_client(**kwargs):
 def process_texts(**kwargs):
   '''Process the user's texts using the specified params'''
 
-  # typecheck inputs
-  assert kwargs['min_sim'] >= 1 and kwargs['min_sim'] <= 100
-
   # identify the infiles
-  infiles = sorted(glob.glob(kwargs['infile_glob']))
-  if len(infiles) == 0:
-    raise Exception('No infiles could be found!')
+  kwargs = process_kwargs(**kwargs)
 
-  # identify banished files and add to infiles
-  if kwargs['banish_glob']:
-    banished_files = sorted(glob.glob(kwargs['banish_glob']))
-    infiles += banished_files
-    banished_file_set = set(banished_files)
-    banished_file_ids = set()
-    for file_idx, file in enumerate(kwargs['infiles']):
-      if file in banished_file_set:
-        banished_file_ids.add(file_idx)
-    kwargs['banished_file_ids'] = banished_file_ids
-  kwargs['infiles'] = infiles
-
-  # if the user provided metadata, store it in the kwargs
-  if kwargs.get('metadata'):
-    kwargs['metadata'] = json.load(open(kwargs['metadata']))
-  else:
-    kwargs['metadata'] = {
-      os.path.basename(i): {
-        'author': 'Unknown',
-        'title': os.path.basename(i),
-      } for i in kwargs['infiles']
-    }
-
-  # if the user specified an --only flag, identify that file's index
-  if kwargs.get('only', None) != None:
-    kwargs['only_index'] = kwargs['infiles'].index(kwargs['only'])
-  else:
-    kwargs['only_index'] = None
+  # create the output directories where results will be stored
+  prepare_output_directories(**kwargs)
 
   # update the metadata and exit if requested
   if not kwargs.get('update_metadata'):
 
     # remove extant db and prepare output directories
-    if os.path.isdir('db'): shutil.rmtree('db')
-    prepare_output_directories(**kwargs)
+    clear_db(**kwargs)
+
+    # save JSON with the list of infiles
+    with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
+      json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
 
     # create the db
     initialize_db('hashbands', **kwargs)
@@ -226,6 +203,61 @@ def process_texts(**kwargs):
   create_all_match_json(**kwargs)
 
 
+def process_kwargs(**kwargs):
+  '''Return a list of the infiles to be processed'''
+
+  # typecheck inputs
+  assert kwargs['min_sim'] >= 1 and kwargs['min_sim'] <= 100
+
+  # get the list of infiles
+  infiles = sorted(glob.glob(kwargs['infile_glob']))
+  if len(infiles) == 0:
+    raise Exception('No infiles could be found!')
+
+  # identify banished files and add to infiles
+  if kwargs['banish_glob']:
+    banished_files = sorted(glob.glob(kwargs['banish_glob']))
+    infiles += banished_files
+    banished_file_set = set(banished_files)
+    banished_file_ids = set()
+    for file_idx, file in enumerate(infiles):
+      if file in banished_file_set:
+        banished_file_ids.add(file_idx)
+    kwargs['banished_file_ids'] = tuple(banished_file_ids)
+  kwargs['infiles'] = infiles
+
+  # identify excluded files and their file ids
+  if kwargs['exclude_glob']:
+    exclude_set = set(sorted(glob.glob(kwargs['exclude_glob'])))
+    excluded_file_ids = set()
+    for file_idx, file in enumerate(infiles):
+      if file in exclude_set:
+        excluded_file_ids.add(file_idx)
+    kwargs['excluded_file_ids'] = tuple(excluded_file_ids)
+
+  # get the metadata (if any)
+  kwargs['metadata'] = get_metadata(**kwargs)
+
+  # get the focal text index (if any)
+  kwargs['only_index'] = get_only_index(**kwargs)
+
+  # return the processed kwargs
+  return kwargs
+
+
+def get_metadata(**kwargs):
+  '''if the user provided metadata, store it in the kwargs'''
+  metadata = json.load(open(kwargs['metadata'])) if kwargs['metadata'] else {}
+  for i in kwargs['infiles']:
+    basename = os.path.basename(i)
+    if basename not in metadata:
+      metadata[basename] = {
+        'author': 'Unknown',
+        'title': os.path.basename(i),
+      }
+  return metadata
+
+
 def prepare_output_directories(**kwargs):
   '''Create the folders that store output objects'''
   for i in ['matches', 'scatterplots', 'indices']:
@@ -243,9 +275,21 @@ def prepare_output_directories(**kwargs):
     if not os.path.exists(path):
       os.makedirs(path)
 
-  # save JSON with the list of infiles
-  with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
-    json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
+
+def get_only_index(**kwargs):
+  '''Return the index number of the only file from which matches should be retained'''
+  if kwargs.get('only', None) != None:
+    return kwargs['infiles'].index(kwargs['only'])
+  else:
+    return None
+
+
+def clear_db(**kwargs):
+  '''Clear the extant db'''
+  if os.path.isdir('db'):
+    shutil.rmtree('db')
+  for i in glob.glob(os.path.join('cache', '*.db')):
+    os.remove(i)
 
 
 ##
@@ -428,6 +472,9 @@ def format_all_matches( **kwargs):
 def format_file_matches(args, **kwargs):
   ''''Format the matches for a single file pair'''
   file_id_a, file_id_b = args
+  if kwargs.get('excluded_file_ids'):
+    if file_id_a in kwargs['excluded_file_ids'] or file_id_b in kwargs['excluded_file_ids']:
+      return
   l = stream_file_pair_matches(file_id_a, file_id_b, **kwargs)
   # check to see if this file pair has >= max allowed similarity
   a_windows = get_windows(kwargs['infiles'][file_id_a], **get_cacheable(kwargs))
@@ -574,8 +621,17 @@ def create_all_match_json(**kwargs):
     shutil.rmtree(match_directory)
 
   # map each author and title to the files in which that string occurs and save those maps
-  authors = [kwargs['metadata'].get(os.path.basename(i), {}).get('author', 'Unknown') for i in kwargs['infiles']]
-  titles = [kwargs['metadata'].get(os.path.basename(i), {}).get('title', os.path.basename(i)) for i in kwargs['infiles']]
+  authors = []
+  titles = []
+  for i in kwargs['infiles']:
+    if kwargs.get('excluded_file_ids'):
+      if i in kwargs['excluded_file_ids']:
+        continue
+    if kwargs.get('banished_file_ids'):
+      if i in kwargs['banished_file_ids']:
+        continue
+    authors.append(kwargs['metadata'].get(os.path.basename(i), {}).get('author', 'Unknown'))
+    titles.append(kwargs['metadata'].get(os.path.basename(i), {}).get('title', os.path.basename(i)))
   author_d = defaultdict(list)
   title_d = defaultdict(list)
   for idx, i in enumerate(authors): author_d[i].append(idx)
@@ -917,7 +973,7 @@ def stream_match_lists(**kwargs):
 
 
 def noop():
-  # banish matches
+  # banish matches through graph analysis
   if kwargs['banish_glob']:
     print(' * banishing matches')
     g = networkx.Graph()
@@ -967,6 +1023,7 @@ def to_edges(l):
 ##
 # Shared
 ##
+
 
 @functools.lru_cache(maxsize=1024)
 def get_words(path, **kwargs):
