@@ -170,7 +170,7 @@ def process_texts(**kwargs):
     infiles += banished_files
     banished_file_set = set(banished_files)
     banished_file_ids = set()
-    for file_idx, file in enumerate(kwargs['infiles']):
+    for file_idx, file in enumerate(infiles):
       if file in banished_file_set:
         banished_file_ids.add(file_idx)
     kwargs['banished_file_ids'] = banished_file_ids
@@ -216,6 +216,9 @@ def process_texts(**kwargs):
     # validate matches from among the candidates
     print(' * validating matches')
     validate_all_matches(**kwargs)
+
+  # banish matches if necessary
+  if kwargs['banish_glob']: banish_matches(**kwargs)
 
   # format matches into JSON for client consumption
   print(' * formatting matches')
@@ -786,6 +789,15 @@ def write_matches(writes, **kwargs):
           out.write(s)
 
 
+def delete_matches(deletes, **kwargs):
+  if kwargs.get('db') == 'sqlite':
+    if kwargs['verbose']: print(' * deleting', len(window_ids), 'matches')
+    with closing(get_db('matches', **kwargs)) as db:
+      cursor = db.cursor()
+      cursor.executemany('DELETE FROM matches WHERE file_id_a = (?) AND window_id_a = (?) OR file_id_b = (?) and window_id_b = (?) ', deletes)
+      db.commit()
+
+
 def repair_database(**kwargs):
   '''Attempt to repair the db in a process-safe manner'''
   raise sqlite3.DatabaseError
@@ -916,33 +928,32 @@ def stream_match_lists(**kwargs):
 ##
 
 
-def noop():
-  # banish matches
-  if kwargs['banish_glob']:
-    print(' * banishing matches')
-    g = networkx.Graph()
-    for file_id_a in matches_d:
-      for file_id_b in matches_d[file_id_a]:
-        for m in matches_d[file_id_a][file_id_b]:
-          g.add_edge(f'{file_id_a}.{m[0]}', f'{file_id_b}.{m[1]}')
-    # map file_id.segment_id segments to whether or not they're banished
-    banished_set = set()
-    distances = dict(networkx.all_pairs_shortest_path_length(g))
-    for i in list(connected_components(g)):
-      banished_ids = [j for j in i if int(j.split('.')[0]) in banished_file_ids]
-      # search up to maximum path length between nodes so nodes linked to a banished node are removed
-      for j in i:
-        if any([distances[j][k] < kwargs['banish_distance'] for k in banished_ids]):
-          banished_set.add(j)
-    # apply the banish filter
-    for file_id_a in list(matches_d):
-      for file_id_b in list(matches_d[file_id_a]):
-        l = []
-        for window_a, window_b, sim in matches_d[file_id_a][file_id_b]:
-          if (f'{file_id_a}.{window_a}' not in banished_set) and \
-             (f'{file_id_b}.{window_b}' not in banished_set):
-            l.append([window_a, window_b, sim])
-        matches_d[file_id_a][file_id_b] = l
+def banish_matches(**kwargs):
+  '''Delete banished matches from the db'''
+  if not kwargs['banish_glob']: return
+  print(' * banishing matches')
+  g = networkx.Graph()
+  for file_id_a, file_id_b in stream_matching_file_id_pairs(**kwargs):
+    l = stream_file_pair_matches(file_id_a, file_id_b, **kwargs)
+    for _, _, window_a, window_b, sim in l:
+      s = '{}.{}'.format(file_id_a, window_a)
+      t = '{}.{}'.format(file_id_b, window_b)
+      g.add_edge(s, t)
+  # create d[file_id] = [window_id, window_id] of banished windows
+  banished_dict = defaultdict(set)
+  distances = dict(networkx.all_pairs_shortest_path_length(g))
+  for i in list(connected_components(g)):
+    banished_ids = [j for j in i if int(j.split('.')[0]) in kwargs['banished_file_ids']]
+    # search up to maximum path length between nodes so nodes linked to a banished node are removed
+    for j in i:
+      if any([distances[j][k] < kwargs['banish_distance'] for k in banished_ids]):
+        file_id, window_id = j.split('.')
+        banished_dict[file_id].add(window_id)
+  # remove the banished file_id, window_id tuples from the db
+  deletes = []
+  for file_id, window_ids in banished_dict.items():
+    deletes += [(file_id, i, file_id, i) for i in window_ids]
+  delete_matches(deletes, **kwargs)
 
 
 def to_graph(l):
