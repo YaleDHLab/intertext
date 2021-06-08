@@ -478,7 +478,8 @@ def format_file_matches(args, **kwargs):
   if kwargs.get('excluded_file_ids'):
     if file_id_a in kwargs['excluded_file_ids'] or file_id_b in kwargs['excluded_file_ids']:
       return
-  l = stream_file_pair_matches(file_id_a, file_id_b, **kwargs)
+  l = list(stream_file_pair_matches(file_id_a, file_id_b, **kwargs))
+  if not l: return
   # check to see if this file pair has >= max allowed similarity
   a_windows = get_windows(kwargs['infiles'][file_id_a], **get_cacheable(kwargs))
   b_windows = get_windows(kwargs['infiles'][file_id_b], **get_cacheable(kwargs))
@@ -845,13 +846,30 @@ def write_matches(writes, **kwargs):
           out.write(s)
 
 
-def delete_matches(deletes, **kwargs):
+def delete_matches(banished_dict, **kwargs):
+  '''Given d[file_id] = [window_id], delete all specified windows'''
   if kwargs.get('db') == 'sqlite':
-    if kwargs['verbose']: print(' * deleting', len(window_ids), 'matches')
+    deletes = []
+    for file_id, window_ids in banished_dict.items():
+      deletes += [(file_id, i, file_id, i) for i in window_ids]
+    if kwargs['verbose']: print(' * deleting', len(deletes), 'matches')
     with closing(get_db('matches', **kwargs)) as db:
       cursor = db.cursor()
       cursor.executemany('DELETE FROM matches WHERE file_id_a = (?) AND window_id_a = (?) OR file_id_b = (?) and window_id_b = (?) ', deletes)
       db.commit()
+  else:
+    for file_id in banished_dict:
+      files = glob.glob(os.path.join('db', 'matches', file_id, '*'))
+      for i in files:
+        with open(i) as f:
+          lines = []
+          for l in f.read().strip().split(row_delimiter):
+            window_id_a, window_id_b, sim = l.split(field_delimiter)
+            if window_id_a not in banished_dict[file_id]:
+              lines.append(l)
+        # write the cleaned lines to disk
+        with open(i, 'w') as out:
+          out.write(row_delimiter.join(lines))
 
 
 def repair_database(**kwargs):
@@ -1006,10 +1024,7 @@ def banish_matches(**kwargs):
         file_id, window_id = j.split('.')
         banished_dict[file_id].add(window_id)
   # remove the banished file_id, window_id tuples from the db
-  deletes = []
-  for file_id, window_ids in banished_dict.items():
-    deletes += [(file_id, i, file_id, i) for i in window_ids]
-  delete_matches(deletes, **kwargs)
+  delete_matches(banished_dict, **kwargs)
 
 
 def to_graph(l):
