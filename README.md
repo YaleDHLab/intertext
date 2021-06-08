@@ -1,6 +1,15 @@
 # Installation
 
 ```bash
+
+# optional: set up conda virtual environment
+conda create --name intertext python=3.7
+conda activate intertext
+
+# optional: set up cuda and cupy:
+conda install cudatoolkit
+conda install -c conda-forge cupy
+
 # clone the source
 git clone https://github.com/YaleDHLab/intertext-module
 
