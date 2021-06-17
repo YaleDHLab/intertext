@@ -586,9 +586,9 @@ def get_match_strings(words, window_ids, **kwargs):
   start = min(window_ids) * kwargs['slide_length']
   end = max(window_ids) * kwargs['slide_length'] + kwargs['window_length']
   return {
-    'prematch': ' '.join(words[max(0, start-kwargs['window_length']):start]),
+    'prematch': ' '.join(words[max(0, start-kwargs['window_length']):start]).lstrip('<br/>'),
     'match': ' '.join(words[start:end]),
-    'postmatch': ' '.join(words[end:end + kwargs['window_length']]),
+    'postmatch': ' '.join(words[end:end + kwargs['window_length']]).rstrip('<br/>'),
   }
 
 
