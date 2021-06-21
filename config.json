@@ -1,4 +1,0 @@
-{
-  "infiles": "data/texts/*.txt",
-  "metadata": "data/metadata/metadata.json"
-}
