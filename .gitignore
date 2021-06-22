@@ -1,9 +1,15 @@
 *.swp
 *.pem
 *.pyc
+*.zip
 *.archive
 *.DS_Store
+*.egg-info
 tmp
-node_modules
+dist
 build
+cache
+output
 __pycache__
+.ipynb_checkpoints
+
