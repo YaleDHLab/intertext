@@ -5,6 +5,7 @@
 *.archive
 *.DS_Store
 *.egg-info
+xml
 tmp
 dist
 build

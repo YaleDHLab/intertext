@@ -19,6 +19,7 @@ import argparse
 import networkx
 import sqlite3
 import zipfile
+import random
 import codecs
 import shutil
 import time
@@ -45,6 +46,8 @@ config = {
   'encoding': 'utf8',
   'xml_base_tag': None,
   'xml_remove_tags': tuple(),
+  'xml_page_tag': None,
+  'xml_page_attr': None,
   'batch_size': 10**5,
   'write_frequency': 10**5,
   'chargram_length': 4,
@@ -72,7 +75,7 @@ TODO:
   * add flag to indicate if same-author matches are allowed
   * add support for CSV metadata
   * add support for xml + txt in same run
-  * make db swapable for MySQL
+  * add MySQL db backend
   * if resuming, process output/files.json to get the files and file ids
 '''
 
@@ -114,6 +117,8 @@ def parse():
   parser.add_argument('--client', '-c', type=str, default=config['client'], help='the client version to fetch and display', required=False)
   parser.add_argument('--xml_base_tag', type=str, default=config['xml_base_tag'], help='if specified, text within this parent tag will be parsed', required=False)
   parser.add_argument('--xml_remove_tags', type=tuple, default=config['xml_remove_tags'], help='if specified, text within these tags will be removed', required=False)
+  parser.add_argument('--xml_page_tag', type=str, default=config['xml_page_tag'], help='if specified, urls can reference content within this tag')
+  parser.add_argument('--xml_page_attr', type=str, default=config['xml_page_attr'], help='if specified, urls can reference content within this attr of xml_page_tag')
   parser.add_argument('--strip_diacritics', default=config['strip_diacritics'], help='if specified, diacritics will be parsed from texts during processing', required=False, action='store_true')
   parser.add_argument('--update_client', default=config['update_client'], help='boolean indicating whether to update the stored client', required=False, action='store_true')
   parser.add_argument('--verbose', '-v', default=config['verbose'], help='if specified, the intertext process will log more operations', required=False, action='store_true')
@@ -208,6 +213,10 @@ def process_texts(**kwargs):
 
 def process_kwargs(**kwargs):
   '''Return a list of the infiles to be processed'''
+
+  # check xml page kwargs
+  if kwargs.get('xml_page_tag') and not kwargs.get('metadata'):
+    raise Exception('--xml_page_tag requires --metadata to be provided')
 
   # typecheck inputs
   assert kwargs['min_sim'] >= 1 and kwargs['min_sim'] <= 100
@@ -528,6 +537,15 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
   a_words = get_words(kwargs['infiles'][file_id_a], **get_cacheable(kwargs, {'display': True}))
   b_words = get_words(kwargs['infiles'][file_id_b], **get_cacheable(kwargs, {'display': True}))
   formatted = []
+  # fetch a mapping from window id to $PAGE elements if necessary
+  a_windows_to_page = None
+  b_windows_to_page = None
+  try:
+    a_windows_to_page = get_window_map(kwargs['infiles'][file_id_a], **get_cacheable(kwargs))
+    b_windows_to_page = get_window_map(kwargs['infiles'][file_id_b], **get_cacheable(kwargs))
+  except:
+    print(' * unable to retrieve mapping from window to page id')
+  # each member c in clusters is a dictionary {a: b: } where values contain the match windows
   for c in clusters:
     a_strings = get_match_strings(a_words, c['a'], **get_cacheable(kwargs))
     b_strings = get_match_strings(b_words, c['b'], **get_cacheable(kwargs))
@@ -554,10 +572,16 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
       'target_author': b_meta.get('author', ''),
       'source_title': a_meta.get('title', ''),
       'target_title': b_meta.get('title', ''),
-      'source_url': a_meta.get('url', ''),
-      'target_url': b_meta.get('url', ''),
+      'source_url': get_url(a_meta, a_windows_to_page, c['a'], **kwargs),
+      'target_url': get_url(b_meta, b_windows_to_page, c['b'], **kwargs),
     })
   return(formatted)
+
+
+def get_url(meta, windows_to_page, windows, **kwargs):
+  '''Return the url to the first of the current windows'''
+  if not kwargs.get('xml_page_tag'): return meta.get('url', '')
+  return meta.get('url').replace('$PAGE_ID', windows_to_page.get(windows[0], ''))
 
 
 def order_match_pair(file_id_a, file_id_b, clusters, **kwargs):
@@ -1054,17 +1078,16 @@ def to_edges(l):
 @functools.lru_cache(maxsize=1024)
 def get_words(path, **kwargs):
   '''Given a file path return a list of strings from that file'''
-  with codecs.open(path, 'r', kwargs['encoding']) as f:
+  with get_file_handler(path, **kwargs) as f:
     if kwargs['xml_base_tag']:
-      soup = BeautifulSoup(f, 'html.parser').find(kwargs['xml_base_tag'].lower())
-      if kwargs['xml_remove_tags']:
-        [soup.extract(i) for i in kwargs['xml_remove_tags']]
+      soup = get_soup(f, **kwargs)
       f = soup.get_text()
     else:
       f = f.read()
-    if kwargs['strip_diacritics'] and not kwargs.get('display', False):
-      f = unidecode(f)
-  # format the list of words
+  # optionally remove diacritics
+  if kwargs['strip_diacritics'] and not kwargs.get('display', False):
+    f = unidecode(f)
+  # optionally format the list of words for display in the web viewer
   if kwargs.get('display', False):
     NEWLINE = '__NEWLINE__'
     l = f.replace('\n', ' ' + NEWLINE + ' ').split()
@@ -1079,6 +1102,19 @@ def get_words(path, **kwargs):
     return f.split()
 
 
+def get_file_handler(path, **kwargs):
+  '''Given the path to a file return a _io.TextIOWrapper object in 'r' mode'''
+  return codecs.open(path, 'r', kwargs['encoding'])
+
+
+def get_soup(f, **kwargs):
+  '''Return a soup object given a _io.TextIOWrapper object'''
+  soup = BeautifulSoup(f, 'html.parser').find(kwargs['xml_base_tag'].lower())
+  # remove any specified xml tags
+  if kwargs['xml_remove_tags']: [soup.extract(i) for i in kwargs['xml_remove_tags']]
+  return soup
+
+
 @functools.lru_cache(maxsize=1024)
 def get_windows(path, **kwargs):
   '''Given a file path return a list of strings from that file'''
@@ -1089,6 +1125,54 @@ def get_windows(path, **kwargs):
       continue
     l.append(' '.join(window))
   return l
+
+
+@functools.lru_cache(maxsize=1024)
+def get_window_map(path, **kwargs):
+  '''Get a mapping from window id to window metadata, including page id'''
+  xml_page_tag = kwargs.get('xml_page_tag')
+  xml_page_attr = kwargs.get('xml_page_attr')
+  if not xml_page_tag: return
+  xml_page_tag = xml_page_tag.lower()
+  xml_page_attr = xml_page_attr.lower() if xml_page_attr else None
+  # read the text document
+  with get_file_handler(path, **kwargs) as f:
+    f = f.read().lower()
+  # split on page breaks using string operations
+  pagebreak = '{}_$PB$_{}'.format(random.randint(0, 2**32), random.randint(0, 2**32)).lower()
+  f = f.replace('<{} '.format(xml_page_tag), pagebreak)
+  f = f.replace('<{}/>'.format(xml_page_tag), pagebreak)
+  pages = f.split(pagebreak)
+  # populate the mapping from window index to page id d[window_index] = {page_id, ...}
+  d = {}
+  window_id = 0
+  # skip content leading up to first page
+  for page_index, page in enumerate(pages[1:]):
+    # handle case of page id specified in an attribute
+    if xml_page_attr:
+      tag = page.split('>')[0]
+      page_id = tag.split('{}='.format(xml_page_attr))[1].split(' ')[0]
+      page_id = page_id.replace('"', '').replace("'", '')
+      page_id = page_id.rstrip('/>')
+    # hande case of page id between tags
+    elif '</' + xml_page_tag in page:
+      page_id = page.split('</' + xml_page_tag)[0]
+      if '>' in page_id: page_id = page_id.split('>')[1]
+    # handle case of sequential pages without identification (self-closing tags)
+    else:
+      page_id = page_index
+    # clean the page id
+    page_id = str(page_id).strip()
+    # remove the lead tag
+    page = '>'.join(page.split('>')[1:])
+    soup = BeautifulSoup(page, 'html.parser')
+    text = soup.get_text()
+    words = text.split()
+    for word_index, word in enumerate(words):
+      if word_index and (word_index % kwargs['window_length'] == 0):
+        window_id += 1
+      d[window_id] = page_id
+  return d
 
 
 def get_cacheable(*args):
