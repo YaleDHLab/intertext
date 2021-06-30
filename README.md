@@ -46,3 +46,55 @@ conda activate intertext
 conda install cudatoolkit
 conda install -c conda-forge cupy
 ```
+
+## Providing Metadata
+
+To indicate the author and title of matching texts, one should pass the flag to a metadata file to the `intertext` command, e.g.
+
+```bash
+intertext --infiles "sample_data/texts/*.txt" --metadata "sample_data/metadata.json"
+```
+
+Metadata files should be JSON files with the following format:
+
+```bash
+{
+  "a.xml": {
+    "author": "Author A",
+    "title": "Title A",
+    "year": 1751,
+    "url": "https://google.com?text=a.xml"
+  },
+  "b.xml": {
+    "author": "Author B",
+    "title": "Title B",
+    "year": 1753,
+    "url": "https://google.com?text=b.xml"
+  }
+}
+```
+
+## Deeplinking
+
+If your text documents can be read on another website, you can add a `url` attribute to each of your files within your metadata JSON file (see example above).
+
+If your documents are XML files and you would like to deeplink to specific pages within a reading environment, you can use the `--xml_page_tag` flag to designate the tag within which page breaks are identified. Additionally, you should include `$PAGE_ID` in the `url` attribute for the given file within your metadata file, e.g.
+
+```bash
+{
+  "a.xml": {
+    "author": "Author A",
+    "title": "Title A",
+    "year": 1751,
+    "url": "https://google.com?text=a.xml&page=$PAGE_ID"
+  },
+  "b.xml": {
+    "author": "Author B",
+    "title": "Title B",
+    "year": 1753,
+    "url": "https://google.com?text=b.xml&page=$PAGE_ID"
+  }
+}
+```
+
+If your page ids are specified within an attribute in the `--xml_page_tag` tag, you can specify the relevant attribute using the `--xml_page_attr` flag.
