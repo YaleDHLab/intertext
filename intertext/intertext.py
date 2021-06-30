@@ -531,18 +531,22 @@ def format_file_matches(args, **kwargs):
 def format_matches(file_id_a, file_id_b, clusters, **kwargs):
   '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
   file_id_a, file_id_b, clusters = order_match_pair(file_id_a, file_id_b, clusters, **kwargs)
-  a_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_a]), {})
-  b_meta = kwargs.get('metadata', {}).get(os.path.basename(kwargs['infiles'][file_id_b]), {})
+  path_a = kwargs['infiles'][file_id_a]
+  path_b = kwargs['infiles'][file_id_b]
+  bn_a = os.path.basename(path_a)
+  bn_b = os.path.basename(path_b)
+  a_meta = kwargs.get('metadata', {}).get(bn_a, {})
+  b_meta = kwargs.get('metadata', {}).get(bn_b, {})
   # format the matches
-  a_words = get_words(kwargs['infiles'][file_id_a], **get_cacheable(kwargs, {'display': True}))
-  b_words = get_words(kwargs['infiles'][file_id_b], **get_cacheable(kwargs, {'display': True}))
+  a_words = get_words(path_a, **get_cacheable(kwargs, {'display': True}))
+  b_words = get_words(path_b, **get_cacheable(kwargs, {'display': True}))
   formatted = []
   # fetch a mapping from window id to $PAGE elements if necessary
   a_windows_to_page = None
   b_windows_to_page = None
   try:
-    a_windows_to_page = get_window_map(kwargs['infiles'][file_id_a], **get_cacheable(kwargs))
-    b_windows_to_page = get_window_map(kwargs['infiles'][file_id_b], **get_cacheable(kwargs))
+    a_windows_to_page = get_window_map(path_a, **get_cacheable(kwargs))
+    b_windows_to_page = get_window_map(path_b, **get_cacheable(kwargs))
   except:
     print(' * unable to retrieve mapping from window to page id')
   # each member c in clusters is a dictionary {a: b: } where values contain the match windows
@@ -556,8 +560,8 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
       'target_file_id': int(file_id_b),
       'source_segment_ids': c['a'],
       'target_segment_ids': c['b'],
-      'source_filename': os.path.basename(kwargs['infiles'][file_id_a]),
-      'target_filename': os.path.basename(kwargs['infiles'][file_id_b]),
+      'source_filename': bn_a,
+      'target_filename': bn_b,
       'source_file_path': kwargs['infiles'][file_id_a],
       'target_file_path': kwargs['infiles'][file_id_b],
       'source_prematch': a_strings['prematch'],
@@ -1169,7 +1173,7 @@ def get_window_map(path, **kwargs):
     text = soup.get_text()
     words = text.split()
     for word_index, word in enumerate(words):
-      if word_index and (word_index % kwargs['window_length'] == 0):
+      if word_index and (word_index % kwargs['slide_length'] == 0):
         window_id += 1
       d[window_id] = page_id
   return d
