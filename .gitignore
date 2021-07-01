@@ -11,6 +11,6 @@ dist
 build
 cache
 output
+design
 __pycache__
 .ipynb_checkpoints
-
