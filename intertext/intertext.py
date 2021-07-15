@@ -674,29 +674,25 @@ def create_all_match_json(**kwargs):
     json.dump(title_d, out)
 
   # create minimal representations of all matches to be sorted by each sort heuristic below
-  l = []
+  l = set()
   for file_id, matches in stream_match_lists(**kwargs):
     for match_idx, match in enumerate(matches):
-      l.append([
-        file_id,
-        match.get('_id'),
+      if int(file_id) != int(match.get('source_file_id')): continue
+      l.add(tuple([
         match_idx,
-        int(file_id) == int(match.get('source_file_id')),
+        match.get('source_file_id'),
+        match.get('target_file_id'),
         match.get('similarity', ''),
         match.get('source_author' ''),
         match.get('source_title', ''),
         match.get('source_year', ''),
-      ])
+      ]))
 
   # create and store the file_id.match_index indices for each sort heuristic
+  l = list(l)
   for label, idx in [['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
-    ids = [[
-      int(i[0]),
-      int(i[1]),
-      int(i[2]),
-      bool(i[3]),
-      int(i[4]),
-    ] for i in sorted(l, key=lambda j: j[idx])]
+    sorted_list = sorted(l, key=lambda j: j[idx])
+    ids = [[int(k) if is_number(k) else k for k in i[:4]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
 
@@ -1195,6 +1191,15 @@ def make_dir(path):
       os.makedirs(path)
     except:
       pass
+
+
+def is_number(s):
+  '''Return a bool indicating whether s is a number'''
+  try:
+    float(s)
+    return True
+  except:
+    return False
 
 
 if __name__ == '__main__':
