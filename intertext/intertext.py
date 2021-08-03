@@ -178,7 +178,7 @@ def process_texts(**kwargs):
     # remove extant db and prepare output directories
     clear_db(**kwargs)
 
-    # save JSON with the list of infiles
+    # save JSON with the list of infiles; indices into infiles == file ids
     with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
       json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
 
@@ -262,11 +262,12 @@ def get_metadata(**kwargs):
   metadata = json.load(open(kwargs['metadata'])) if kwargs['metadata'] else {}
   for i in kwargs['infiles']:
     basename = os.path.basename(i)
-    if basename not in metadata:
-      metadata[basename] = {
-        'author': 'Unknown',
-        'title': os.path.basename(i),
-      }
+    if basename not in metadata: metadata[basename] = {}
+    if not metadata[basename].get('author'): metadata[basename]['author'] = 'Unknown'
+    if not metadata[basename].get('title'): metadata[basename]['title'] = basename
+    for j in metadata[basename]:
+      if isinstance(metadata[basename][j], str):
+        metadata[basename][j] = metadata[basename][j].strip()
   return metadata
 
 
@@ -640,6 +641,7 @@ def create_all_match_json(**kwargs):
   '''Create the output JSON to be consumed by the web client'''
   # combine all the matches in each match directory into a composite match file
   guid_to_int = defaultdict(lambda: len(guid_to_int))
+  id_to_n_matches = {}
   for match_directory in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
     # l contains the flat list of matches for a single input file
     l = []
@@ -650,29 +652,23 @@ def create_all_match_json(**kwargs):
       i['_id'] = guid_to_int[i['_id']]
     with open(os.path.join(match_directory + '.json'), 'w') as out:
       json.dump(l, out)
+    id_to_n_matches[os.path.basename(match_directory)] = len(l)
     shutil.rmtree(match_directory)
 
   # map each author and title to the files in which that string occurs and save those maps
-  authors = []
-  titles = []
-  for i in kwargs['infiles']:
-    if kwargs.get('excluded_file_ids'):
-      if i in kwargs['excluded_file_ids']:
-        continue
-    if kwargs.get('banished_file_ids'):
-      if i in kwargs['banished_file_ids']:
-        continue
-    authors.append(kwargs['metadata'].get(os.path.basename(i), {}).get('author', 'Unknown'))
-    titles.append(kwargs['metadata'].get(os.path.basename(i), {}).get('title', os.path.basename(i)))
-  author_d = defaultdict(list)
-  title_d = defaultdict(list)
-  for idx, i in enumerate(authors): author_d[i].append(idx)
-  for idx, i in enumerate(titles): title_d[i].append(idx)
-  with open(os.path.join(kwargs['output'], 'api', 'file_ids.json'), 'w') as out:
-    json.dump({
-      'Author': author_d,
-      'Title': title_d,
-    }, out)
+  metadata = []
+  for idx, i in enumerate(kwargs['infiles']):
+    if i in kwargs.get('excluded_file_ids', []) or i in kwargs.get('banished_file_ids', []):
+      continue
+    file_meta = kwargs['metadata'].get(os.path.basename(i), {})
+    metadata.append({
+      'id': idx,
+      'author': file_meta['author'],
+      'title': file_meta['title'],
+      'matches': id_to_n_matches[str(idx)],
+    })
+  with open(os.path.join(kwargs['output'], 'api', 'metadata.json'), 'w') as out:
+    json.dump(metadata, out)
 
   # create minimal representations of all matches to be sorted by each sort heuristic below
   l = set()
