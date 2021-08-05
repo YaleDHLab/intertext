@@ -20,14 +20,9 @@ conda activate intertext
 conda install cudatoolkit
 conda install -c conda-forge cupy
 
-# clone the source
-git clone https://github.com/YaleDHLab/intertext
-
-# move into the intertext directory
-cd intertext
-
-# install the module
-python setup.py install
+# install the package
+pip uninstall intertext -y
+pip install https://github.com/yaledhlab/intertext/archive/master.zip
 ```
 
 # Usage
