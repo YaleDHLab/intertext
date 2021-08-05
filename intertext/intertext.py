@@ -688,7 +688,8 @@ def create_all_match_json(**kwargs):
   # create and store the file_id.match_index indices for each sort heuristic
   l = list(l)
   for label, idx in [['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
-    sorted_list = sorted(l, key=lambda j: j[idx])
+    # reverse the list sorted by similarity
+    sorted_list = sorted(l, key=lambda j: j[idx], reverse=label == 'similarity')
     ids = [[int(k) if is_number(k) else k for k in i[:4]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
