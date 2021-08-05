@@ -178,7 +178,7 @@ def process_texts(**kwargs):
     # remove extant db and prepare output directories
     clear_db(**kwargs)
 
-    # save JSON with the list of infiles
+    # save JSON with the list of infiles; indices into infiles == file ids
     with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
       json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
 
@@ -262,11 +262,12 @@ def get_metadata(**kwargs):
   metadata = json.load(open(kwargs['metadata'])) if kwargs['metadata'] else {}
   for i in kwargs['infiles']:
     basename = os.path.basename(i)
-    if basename not in metadata:
-      metadata[basename] = {
-        'author': 'Unknown',
-        'title': os.path.basename(i),
-      }
+    if basename not in metadata: metadata[basename] = {}
+    if not metadata[basename].get('author'): metadata[basename]['author'] = 'Unknown'
+    if not metadata[basename].get('title'): metadata[basename]['title'] = basename
+    for j in metadata[basename]:
+      if isinstance(metadata[basename][j], str):
+        metadata[basename][j] = metadata[basename][j].strip()
   return metadata
 
 
@@ -640,6 +641,7 @@ def create_all_match_json(**kwargs):
   '''Create the output JSON to be consumed by the web client'''
   # combine all the matches in each match directory into a composite match file
   guid_to_int = defaultdict(lambda: len(guid_to_int))
+  id_to_n_matches = {}
   for match_directory in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
     # l contains the flat list of matches for a single input file
     l = []
@@ -650,53 +652,45 @@ def create_all_match_json(**kwargs):
       i['_id'] = guid_to_int[i['_id']]
     with open(os.path.join(match_directory + '.json'), 'w') as out:
       json.dump(l, out)
+    id_to_n_matches[os.path.basename(match_directory)] = len(l)
     shutil.rmtree(match_directory)
 
   # map each author and title to the files in which that string occurs and save those maps
-  authors = []
-  titles = []
-  for i in kwargs['infiles']:
-    if kwargs.get('excluded_file_ids'):
-      if i in kwargs['excluded_file_ids']:
-        continue
-    if kwargs.get('banished_file_ids'):
-      if i in kwargs['banished_file_ids']:
-        continue
-    authors.append(kwargs['metadata'].get(os.path.basename(i), {}).get('author', 'Unknown'))
-    titles.append(kwargs['metadata'].get(os.path.basename(i), {}).get('title', os.path.basename(i)))
-  author_d = defaultdict(list)
-  title_d = defaultdict(list)
-  for idx, i in enumerate(authors): author_d[i].append(idx)
-  for idx, i in enumerate(titles): title_d[i].append(idx)
-  with open(os.path.join(kwargs['output'], 'api', 'authors.json'), 'w') as out:
-    json.dump(author_d, out)
-  with open(os.path.join(kwargs['output'], 'api', 'titles.json'), 'w')  as out:
-    json.dump(title_d, out)
+  metadata = []
+  for idx, i in enumerate(kwargs['infiles']):
+    if i in kwargs.get('excluded_file_ids', []) or i in kwargs.get('banished_file_ids', []):
+      continue
+    file_meta = kwargs['metadata'].get(os.path.basename(i), {})
+    metadata.append({
+      'id': idx,
+      'author': file_meta['author'],
+      'title': file_meta['title'],
+      'matches': id_to_n_matches[str(idx)],
+    })
+  with open(os.path.join(kwargs['output'], 'api', 'metadata.json'), 'w') as out:
+    json.dump(metadata, out)
 
   # create minimal representations of all matches to be sorted by each sort heuristic below
-  l = []
+  l = set()
   for file_id, matches in stream_match_lists(**kwargs):
     for match_idx, match in enumerate(matches):
-      l.append([
-        file_id,
-        match.get('_id'),
+      if int(file_id) != int(match.get('source_file_id')): continue
+      l.add(tuple([
         match_idx,
-        int(file_id) == int(match.get('source_file_id')),
+        match.get('source_file_id'),
+        match.get('target_file_id'),
         match.get('similarity', ''),
         match.get('source_author' ''),
         match.get('source_title', ''),
         match.get('source_year', ''),
-      ])
+      ]))
 
   # create and store the file_id.match_index indices for each sort heuristic
+  l = list(l)
   for label, idx in [['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
-    ids = [[
-      int(i[0]),
-      int(i[1]),
-      int(i[2]),
-      bool(i[3]),
-      int(i[4]),
-    ] for i in sorted(l, key=lambda j: j[idx])]
+    # reverse the list sorted by similarity
+    sorted_list = sorted(l, key=lambda j: j[idx], reverse=label == 'similarity')
+    ids = [[int(k) if is_number(k) else k for k in i[:4]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
 
@@ -1195,6 +1189,15 @@ def make_dir(path):
       os.makedirs(path)
     except:
       pass
+
+
+def is_number(s):
+  '''Return a bool indicating whether s is a number'''
+  try:
+    float(s)
+    return True
+  except:
+    return False
 
 
 if __name__ == '__main__':
