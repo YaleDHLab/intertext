@@ -7,7 +7,6 @@ from itertools import combinations
 from unidecode import unidecode
 from contextlib import closing
 from bs4 import BeautifulSoup
-from Levenshtein import ratio
 from copy import deepcopy
 from nltk import ngrams
 import multiprocessing
@@ -34,6 +33,13 @@ try:
   CUDA_AVAILABLE = True
 except:
   CUDA_AVAILABLE = False
+
+
+try:
+  from Levenshtein import ratio
+  LEVENSHTEIN_AVAILABLE = True
+except:
+  LEVENSHTEIN_AVAILABLE = False
 
 
 # global config
@@ -452,18 +458,20 @@ def validate_file_matches(args, **kwargs):
       print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
       print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
       continue
-    # run a fast pass to measure
-    sim = ratio(text_a, text_b) * 100
-    if sim > (kwargs['min_sim'] * 0.85):
-      sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
-      if sim >= kwargs['min_sim']:
-        # remove matches with predominance of single character words
-        a_singles = [i for i in text_a.split() if len(i) == 1]
-        b_singles = [i for i in text_b.split() if len(i) == 1]
-        if len(a_singles) >= (kwargs['window_length'] * 0.75) or \
-           len(b_singles) >= (kwargs['window_length'] * 0.75):
-          continue
-        matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
+    # run a fast pass to measure similarity (if possible)
+    if LEVENSHTEIN_AVAILABLE:
+      sim = ratio(text_a, text_b) * 100
+      if sim < (kwargs['min_sim'] * 0.85): continue
+    # measure difflib similarity
+    sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
+    if sim >= kwargs['min_sim']:
+      # remove matches with predominance of single character words
+      a_singles = [i for i in text_a.split() if len(i) == 1]
+      b_singles = [i for i in text_b.split() if len(i) == 1]
+      if len(a_singles) >= (kwargs['window_length'] * 0.75) or \
+         len(b_singles) >= (kwargs['window_length'] * 0.75):
+        continue
+      matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
   write_matches(matches, **kwargs)
 
 
