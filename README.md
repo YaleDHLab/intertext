@@ -30,7 +30,7 @@ intertext --infiles "sample_data/texts/*.txt"
 python -m http.server 8000
 ```
 
-Then open a web browser to `http://localhost:8000` and you'll see any intertextualities the engine discovered!
+Then open a web browser to `http://localhost:8000/output` and you'll see any intertextualities the engine discovered!
 
 ## CUDA Acceleration
 
