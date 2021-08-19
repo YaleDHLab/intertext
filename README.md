@@ -11,14 +11,9 @@ Intertext uses machine learning and interactive visualizations to identify and d
 To install Intertext, run the steps below:
 
 ```bash
-
-# optional: set up conda virtual environment
+# optional: install Anaconda and set up conda virtual environment
 conda create --name intertext python=3.7
 conda activate intertext
-
-# optional: set up cuda and cupy:
-conda install cudatoolkit
-conda install -c conda-forge cupy
 
 # install the package
 pip uninstall intertext -y
@@ -49,6 +44,10 @@ conda activate intertext
 # set up cuda and cupy
 conda install cudatoolkit
 conda install -c conda-forge cupy
+
+# install the package
+pip uninstall intertext -y
+pip install https://github.com/yaledhlab/intertext/archive/master.zip
 ```
 
 ## Providing Metadata
