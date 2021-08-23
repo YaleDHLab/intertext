@@ -5,6 +5,7 @@
 *.archive
 *.DS_Store
 *.egg-info
+*.ipynb
 xml
 tmp
 dist
@@ -14,3 +15,4 @@ output
 design
 __pycache__
 .ipynb_checkpoints
+sample_data/*

@@ -688,6 +688,8 @@ def create_all_match_json(**kwargs):
         match.get('source_file_id'),
         match.get('target_file_id'),
         match.get('similarity', ''),
+        len(match.get('source_segment_ids')),
+        len(match.get('target_segment_ids')),
         match.get('source_author' ''),
         match.get('source_title', ''),
         match.get('source_year', ''),
@@ -698,7 +700,7 @@ def create_all_match_json(**kwargs):
   for label, idx in [['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
     # reverse the list sorted by similarity
     sorted_list = sorted(l, key=lambda j: j[idx], reverse=label == 'similarity')
-    ids = [[int(k) if is_number(k) else k for k in i[:4]] for i in sorted_list]
+    ids = [[int(k) if is_number(k) else k for k in i[:6]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
 
@@ -1100,8 +1102,8 @@ def get_words(path, **kwargs):
     formatted = []
     for idx, i in enumerate(l):
       if i == NEWLINE:
-        # prevent multiple consecutive brs
-        if formatted and not formatted[-1].endswith('<br/>'): formatted[-1] += '<br/>'
+        # prevent more than two consecutive brs
+        if formatted and not formatted[-1].endswith('<br/><br/>'): formatted[-1] += '<br/>'
       else:
         formatted.append(i)
     return formatted
