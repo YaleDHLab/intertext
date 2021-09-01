@@ -18,7 +18,7 @@ setup(
   install_requires=[
     'beautifulsoup4==4.5.1',
     'datasketch==0.2.6',
-    'networkx==2.5',
+    'networkx==2.4',
     'nltk==3.4.5',
     'numpy==1.20.1',
     'requests==2.24.0',
