@@ -594,7 +594,7 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
 def get_url(meta, windows_to_page, windows, **kwargs):
   '''Return the url to the first of the current windows'''
   if not kwargs.get('xml_page_tag'): return meta.get('url', '')
-  return meta.get('url').replace('$PAGE_ID', windows_to_page.get(windows[0], ''))
+  return meta.get('url', '').replace('$PAGE_ID', windows_to_page.get(windows[0], ''))
 
 
 def order_match_pair(file_id_a, file_id_b, clusters, **kwargs):
