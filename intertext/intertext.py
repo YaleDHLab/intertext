@@ -7,6 +7,7 @@ from itertools import combinations
 from unidecode import unidecode
 from contextlib import closing
 from bs4 import BeautifulSoup
+from bounter import bounter
 from copy import deepcopy
 from nltk import ngrams
 import multiprocessing
@@ -73,6 +74,8 @@ config = {
   'only': None,
   'update_metadata': False,
   'verbose': False,
+  'compute_likelihood': False,
+  'bounter_size': 64,
 }
 
 
@@ -131,6 +134,8 @@ def parse():
   parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
   parser.add_argument('--only', default=config['only'], help='only retain matches that include text from the specified file path', required=False)
   parser.add_argument('--update_metadata', default=config['update_metadata'], help='skip all processing and only update the metadata for a plot', action='store_true')
+  parser.add_argument('--compute_likelihood', default=config['compute_likelihood'], help='compute the likelihood of strings in the corpus', action='store_true')
+  parser.add_argument('--bounter_size', default=config['bounter_size'], help='MB allocated to bounter instance', required=False)
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
   download_client(**config)
@@ -442,9 +447,9 @@ def validate_all_matches(**kwargs):
   pool.join()
 
 
-def validate_file_matches(args, **kwargs):
+def validate_file_matches(file_args, **kwargs):
   '''Validate the matches for a single file pair and return [a_file,b_file,a_window,b_window]'''
-  file_id_a, file_id_b = args
+  file_id_a, file_id_b = file_args
   matches = []
   for i in stream_matching_candidate_windows(file_id_a, file_id_b, **kwargs):
     file_id_a, file_id_b, window_id_a, window_id_b = i
@@ -458,12 +463,7 @@ def validate_file_matches(args, **kwargs):
       print(file_id_a, window_id_a, len(file_a_windows), kwargs['infiles'][file_id_a])
       print(file_id_b, window_id_b, len(file_b_windows), kwargs['infiles'][file_id_b])
       continue
-    # run a fast pass to measure similarity (if possible)
-    if LEVENSHTEIN_AVAILABLE:
-      sim = ratio(text_a, text_b) * 100
-      if sim < (kwargs['min_sim'] * 0.85): continue
-    # measure difflib similarity
-    sim = SequenceMatcher(None, text_a, text_b, autojunk=False).ratio() * 100
+    sim = get_string_sim(text_a, text_b, **kwargs)
     if sim >= kwargs['min_sim']:
       # remove matches with predominance of single character words
       a_singles = [i for i in text_a.split() if len(i) == 1]
@@ -471,7 +471,13 @@ def validate_file_matches(args, **kwargs):
       if len(a_singles) >= (kwargs['window_length'] * 0.75) or \
          len(b_singles) >= (kwargs['window_length'] * 0.75):
         continue
-      matches.append([file_id_a, file_id_b, window_id_a, window_id_b, int(sim)])
+      matches.append([
+        file_id_a,
+        file_id_b,
+        window_id_a,
+        window_id_b,
+        int(sim),
+      ])
   write_matches(matches, **kwargs)
 
 
@@ -484,15 +490,17 @@ def format_all_matches( **kwargs):
   '''Format the match objects for each infile and store as JSON'''
   pool = multiprocessing.Pool()
   l = stream_matching_file_id_pairs(**kwargs)
-  f = functools.partial(format_file_matches, **kwargs)
+  # obtain global counts of terms across corpus
+  counts = get_word_counts(**kwargs)
+  f = functools.partial(format_file_matches, counts, **kwargs)
   for i in pool.map(f, l): pass
   pool.close()
   pool.join()
 
 
-def format_file_matches(args, **kwargs):
+def format_file_matches(counts, file_args, **kwargs):
   ''''Format the matches for a single file pair'''
-  file_id_a, file_id_b = args
+  file_id_a, file_id_b = file_args
   if kwargs.get('excluded_file_ids'):
     if file_id_a in kwargs['excluded_file_ids'] or file_id_b in kwargs['excluded_file_ids']:
       return
@@ -530,14 +538,14 @@ def format_file_matches(args, **kwargs):
           'sim': sim,
         })
   # format the matches, then save into both file_id_a and file_id_b directories
-  formatted = format_matches(file_id_a, file_id_b, clusters, **kwargs)
+  formatted = format_matches(file_id_a, file_id_b, clusters, counts, **kwargs)
   for i in [file_id_a, file_id_b]:
     out_dir = os.path.join(kwargs['output'], 'api', 'matches', str(i))
     with open(os.path.join(out_dir, f'{file_id_a}-{file_id_b}.json'), 'w') as out:
       json.dump(formatted, out)
 
 
-def format_matches(file_id_a, file_id_b, clusters, **kwargs):
+def format_matches(file_id_a, file_id_b, clusters, counts, **kwargs):
   '''Given integer file ids and clusters [{a: [], b: [], sim: []}] format matches for display'''
   file_id_a, file_id_b, clusters = order_match_pair(file_id_a, file_id_b, clusters, **kwargs)
   path_a = kwargs['infiles'][file_id_a]
@@ -565,6 +573,7 @@ def format_matches(file_id_a, file_id_b, clusters, **kwargs):
     formatted.append({
       '_id': str(uuid.uuid4()),
       'similarity': c['sim'],
+      'probability': get_string_prob(a_strings['match'], b_strings['match'], counts),
       'source_file_id': int(file_id_a),
       'target_file_id': int(file_id_b),
       'source_segment_ids': c['a'],
@@ -691,6 +700,7 @@ def create_all_match_json(**kwargs):
           len(match.get('source_segment_ids')),
           len(match.get('target_segment_ids')),
         ]),
+        match.get('probability'),
         match.get('similarity', ''),
         match.get('source_author' ''),
         match.get('source_title', ''),
@@ -699,11 +709,20 @@ def create_all_match_json(**kwargs):
 
   # create and store the file_id.match_index indices for each sort heuristic
   l = list(l)
-  for label, idx in [['length', -5], ['similarity', -4], ['author', -3], ['title', -2], ['year', -1]]:
+  for label, idx in [
+      ['length', -6],
+      ['probability', -5],
+      ['similarity', -4],
+      ['author', -3],
+      ['title', -2],
+      ['year', -1],
+  ]:
+    # only process the probability measures if they're present
+    if label == 'probability' and not kwargs.get('compute_likelihood'): continue
     # reverse the lists sorted by similarity and length
     inverse = label == 'similarity' or label == 'length'
     sorted_list = sorted(l, key=lambda j: j[idx], reverse=inverse)
-    ids = [[int(k) if is_number(k) else k for k in i[:5]] for i in sorted_list]
+    ids = [[int(k) if is_number(k) else k for k in i[:6]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
       json.dump(ids, out)
 
@@ -1194,6 +1213,31 @@ def get_cacheable(*args):
     for i in args[1:]:
       kwargs.update(i)
   return {k: kwargs[k] for k in kwargs if isinstance(kwargs[k], Hashable)}
+
+
+def get_word_counts(**kwargs):
+  '''Return a bounter.bounter instance if user requested string likelihoods, else None'''
+  if not kwargs.get('compute_likelihood'): return None
+  print(' * computing word counts')
+  counts = bounter(size_mb=kwargs.get('bounter_size'))
+  for i in kwargs['infiles']:
+    words = get_words(i, **get_cacheable(kwargs))
+    counts.update(words)
+  print(' * finished computing word counts')
+  return counts
+
+
+def get_string_sim(a, b, **kwargs):
+  '''Return the similarity between strings a and b'''
+  return SequenceMatcher(None, a, b, autojunk=False).ratio() * 100
+
+
+def get_string_prob(a, b, counts):
+  '''Return the maximum probability of s1 and s2 as a float'''
+  if not counts: return -1
+  probs_a = sum([counts[w] / counts.total() for w in a.split()])
+  probs_b = sum([counts[w] / counts.total() for w in b.split()])
+  return round(max([probs_a, probs_b]), 3) * 1000
 
 
 def make_dir(path):
