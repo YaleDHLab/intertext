@@ -1219,7 +1219,7 @@ def get_word_counts(**kwargs):
   '''Return a bounter.bounter instance if user requested string likelihoods, else None'''
   if not kwargs.get('compute_probabilities'): return None
   print(' * computing word counts')
-  counts = bounter(size_mb=kwargs.get('bounter_size'))
+  counts = bounter(size_mb=int(kwargs.get('bounter_size')))
   for i in kwargs['infiles']:
     words = get_words(i, **get_cacheable(kwargs))
     counts.update(words)
