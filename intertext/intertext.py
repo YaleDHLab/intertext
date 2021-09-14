@@ -719,8 +719,8 @@ def create_all_match_json(**kwargs):
   ]:
     # only process the probability measures if they're present
     if label == 'probability' and not kwargs.get('compute_likelihood'): continue
-    # reverse the lists sorted by similarity and length
-    inverse = label == 'similarity' or label == 'length'
+    # reverse certain sort orders to proceed max to min
+    inverse = label in set(['similarity', 'length', 'probability'])
     sorted_list = sorted(l, key=lambda j: j[idx], reverse=inverse)
     ids = [[int(k) if is_number(k) else k for k in i[:6]] for i in sorted_list]
     with open(os.path.join(kwargs['output'], 'api', 'indices', 'match-ids-by-{}.json'.format(label)), 'w') as out:
