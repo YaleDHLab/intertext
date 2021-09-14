@@ -74,7 +74,7 @@ config = {
   'only': None,
   'update_metadata': False,
   'verbose': False,
-  'compute_likelihood': False,
+  'compute_probabilities': False,
   'bounter_size': 64,
 }
 
@@ -134,7 +134,7 @@ def parse():
   parser.add_argument('--db', default=config['db'], help='specify sqlite to use a sqlite db', required=False)
   parser.add_argument('--only', default=config['only'], help='only retain matches that include text from the specified file path', required=False)
   parser.add_argument('--update_metadata', default=config['update_metadata'], help='skip all processing and only update the metadata for a plot', action='store_true')
-  parser.add_argument('--compute_likelihood', default=config['compute_likelihood'], help='compute the likelihood of strings in the corpus', action='store_true')
+  parser.add_argument('--compute_probabilities', default=config['compute_probabilities'], help='compute the likelihood of strings in the corpus', action='store_true')
   parser.add_argument('--bounter_size', default=config['bounter_size'], help='MB allocated to bounter instance', required=False)
   config.update(vars(parser.parse_args()))
   if config['update_client']: remove_client(**config)
@@ -718,7 +718,7 @@ def create_all_match_json(**kwargs):
       ['year', -1],
   ]:
     # only process the probability measures if they're present
-    if label == 'probability' and not kwargs.get('compute_likelihood'): continue
+    if label == 'probability' and not kwargs.get('compute_probabilities'): continue
     # reverse certain sort orders to proceed max to min
     inverse = label in set(['similarity', 'length', 'probability'])
     sorted_list = sorted(l, key=lambda j: j[idx], reverse=inverse)
@@ -1217,7 +1217,7 @@ def get_cacheable(*args):
 
 def get_word_counts(**kwargs):
   '''Return a bounter.bounter instance if user requested string likelihoods, else None'''
-  if not kwargs.get('compute_likelihood'): return None
+  if not kwargs.get('compute_probabilities'): return None
   print(' * computing word counts')
   counts = bounter(size_mb=kwargs.get('bounter_size'))
   for i in kwargs['infiles']:
