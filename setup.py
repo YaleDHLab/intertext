@@ -17,6 +17,7 @@ setup(
   license='MIT',
   install_requires=[
     'beautifulsoup4==4.5.1',
+    'bounter==1.1.1',
     'datasketch==0.2.6',
     'networkx>=2.4',
     'nltk==3.4.5',
