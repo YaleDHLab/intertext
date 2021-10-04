@@ -85,7 +85,7 @@ TODO:
   * add support for CSV metadata
   * add support for xml + txt in same run
   * add MySQL db backend
-  * if resuming, process output/files.json to get the files and file ids
+  * if resuming, process output/config.json to get the files and file ids
 '''
 
 
@@ -189,10 +189,6 @@ def process_texts(**kwargs):
     # remove extant db and prepare output directories
     clear_db(**kwargs)
 
-    # save JSON with the list of infiles; indices into infiles == file ids
-    with open(os.path.join(kwargs['output'], 'api', 'files.json'), 'w') as out:
-      json.dump(kwargs['infiles'], out)  # save JSON with the list of infiles
-
     # create the db
     initialize_db('hashbands', **kwargs)
     initialize_db('candidates', **kwargs)
@@ -220,6 +216,14 @@ def process_texts(**kwargs):
   # combine all matches into a single match object
   print(' * formatting JSON outputs')
   create_all_match_json(**kwargs)
+
+  # write the output config file
+  print(' * writing config')
+  write_config(**kwargs)
+
+  # copy input texts into outputs
+  print(' * preparing text reader data')
+  create_reader_data(**kwargs)
 
 
 def process_kwargs(**kwargs):
@@ -284,7 +288,7 @@ def get_metadata(**kwargs):
 
 def prepare_output_directories(**kwargs):
   '''Create the folders that store output objects'''
-  for i in ['matches', 'scatterplots', 'indices']:
+  for i in ['matches', 'scatterplots', 'indices', 'texts']:
     path = os.path.join(kwargs['output'], 'api', i)
     if not os.path.exists(path):
       os.makedirs(path)
@@ -314,6 +318,29 @@ def clear_db(**kwargs):
     shutil.rmtree('db')
   for i in glob.glob(os.path.join('cache', '*.db')):
     os.remove(i)
+
+
+def write_config(**kwargs):
+  # map each author and title to the files in which that string occurs and save those maps
+  metadata = []
+  for idx, i in enumerate(kwargs['infiles']):
+    if i in kwargs.get('excluded_file_ids', []) or i in kwargs.get('banished_file_ids', []):
+      continue
+    file_meta = kwargs['metadata'].get(os.path.basename(i), {})
+    metadata.append({
+      'id': idx,
+      'author': file_meta['author'],
+      'title': file_meta['title'],
+      'matches': os.path.getsize(os.path.join(kwargs['output'], 'api', 'matches', str(idx) + '.json')) > 2,
+    })
+  out_path = os.path.join(kwargs['output'], 'api', 'config.json')
+  with open(out_path, 'w') as out:
+    json.dump({
+      'infiles': kwargs['infiles'],
+      'metadata': metadata,
+      'window_size': kwargs['window_length'],
+      'window_slide': kwargs['slide_length'],
+    }, out)
 
 
 ##
@@ -658,7 +685,6 @@ def create_all_match_json(**kwargs):
   '''Create the output JSON to be consumed by the web client'''
   # combine all the matches in each match directory into a composite match file
   guid_to_int = defaultdict(lambda: len(guid_to_int))
-  id_to_n_matches = {}
   for match_directory in glob.glob(os.path.join(kwargs['output'], 'api', 'matches', '*')):
     # l contains the flat list of matches for a single input file
     l = []
@@ -669,23 +695,7 @@ def create_all_match_json(**kwargs):
       i['_id'] = guid_to_int[i['_id']]
     with open(os.path.join(match_directory + '.json'), 'w') as out:
       json.dump(l, out)
-    id_to_n_matches[os.path.basename(match_directory)] = len(l)
     shutil.rmtree(match_directory)
-
-  # map each author and title to the files in which that string occurs and save those maps
-  metadata = []
-  for idx, i in enumerate(kwargs['infiles']):
-    if i in kwargs.get('excluded_file_ids', []) or i in kwargs.get('banished_file_ids', []):
-      continue
-    file_meta = kwargs['metadata'].get(os.path.basename(i), {})
-    metadata.append({
-      'id': idx,
-      'author': file_meta['author'],
-      'title': file_meta['title'],
-      'matches': id_to_n_matches[str(idx)],
-    })
-  with open(os.path.join(kwargs['output'], 'api', 'metadata.json'), 'w') as out:
-    json.dump(metadata, out)
 
   # create minimal representations of all matches to be sorted by each sort heuristic below
   l = set()
@@ -769,6 +779,19 @@ def write_scatterplots(**kwargs):
         # write the scatterplot data
         with open(os.path.join(out_dir, '{}-{}-{}.json'.format(i, j, k)), 'w') as out:
           json.dump(scatterplot_data, out)
+
+
+##
+# Create reader view
+##
+
+def create_reader_data(**kwargs):
+  '''Create the data to be used in the reader view'''
+  for idx, i in enumerate(kwargs['infiles']):
+    out_path = os.path.join(kwargs['output'], 'api', 'texts', str(idx) + '.json')
+    words = get_words(i, **get_cacheable(kwargs, {'display': True}))
+    with open(out_path, 'w') as out:
+      json.dump(words, out)
 
 
 ##
