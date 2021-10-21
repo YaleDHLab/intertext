@@ -125,7 +125,7 @@ def parse():
   parser.add_argument('--output', '-o', type=str, default=config['output'], help='the output location', required=False)
   parser.add_argument('--client', '-c', type=str, default=config['client'], help='the client version to fetch and display', required=False)
   parser.add_argument('--xml_base_tag', type=str, default=config['xml_base_tag'], help='if specified, text within this parent tag will be parsed', required=False)
-  parser.add_argument('--xml_remove_tags', type=tuple, default=config['xml_remove_tags'], help='if specified, text within these tags will be removed', required=False)
+  parser.add_argument('--xml_remove_tags', default=config['xml_remove_tags'], help='if specified, text within these tags will be removed', nargs='+', required=False)
   parser.add_argument('--xml_page_tag', type=str, default=config['xml_page_tag'], help='if specified, urls can reference content within this tag')
   parser.add_argument('--xml_page_attr', type=str, default=config['xml_page_attr'], help='if specified, urls can reference content within this attr of xml_page_tag')
   parser.add_argument('--strip_diacritics', default=config['strip_diacritics'], help='if specified, diacritics will be parsed from texts during processing', required=False, action='store_true')
@@ -137,6 +137,7 @@ def parse():
   parser.add_argument('--compute_probabilities', default=config['compute_probabilities'], help='compute the likelihood of strings in the corpus', action='store_true')
   parser.add_argument('--bounter_size', default=config['bounter_size'], help='MB allocated to bounter instance', required=False)
   config.update(vars(parser.parse_args()))
+  if config.get('xml_remove_tags'): config['xml_remove_tags'] = tuple(config['xml_remove_tags'])
   if config['update_client']: remove_client(**config)
   download_client(**config)
   if config.get('infile_glob'): process_texts(**config)
@@ -1134,7 +1135,7 @@ def get_words(path, **kwargs):
   with get_file_handler(path, **kwargs) as f:
     if kwargs['xml_base_tag']:
       soup = get_soup(f, **kwargs)
-      f = soup.get_text()
+      f = soup.get_text() if soup else ''
     else:
       f = f.read()
   # optionally remove diacritics
@@ -1164,8 +1165,14 @@ def get_file_handler(path, **kwargs):
 def get_soup(f, **kwargs):
   '''Return a soup object given a _io.TextIOWrapper object'''
   soup = BeautifulSoup(f, 'html.parser').find(kwargs['xml_base_tag'].lower())
+  if not soup:
+    print('WARNING: No XML content was found at tag', kwargs['xml_base_tag'].lower(), f.name)
+    return ''
   # remove any specified xml tags
-  if kwargs['xml_remove_tags']: [soup.extract(i) for i in kwargs['xml_remove_tags']]
+  if kwargs.get('xml_remove_tags'):
+    for i in kwargs['xml_remove_tags']:
+      for t in soup.find_all(i.lower()):
+        t.extract()
   return soup
 
 
@@ -1220,7 +1227,7 @@ def get_window_map(path, **kwargs):
     # remove the lead tag
     page = '>'.join(page.split('>')[1:])
     soup = BeautifulSoup(page, 'html.parser')
-    text = soup.get_text()
+    text = soup.get_text() if soup else ''
     words = text.split()
     for word_index, word in enumerate(words):
       if word_index and (word_index % kwargs['slide_length'] == 0):
