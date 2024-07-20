@@ -26,7 +26,6 @@ pip install https://github.com/yaledhlab/intertext/archive/master.zip
 # search for intertextuality in some documents
 python intertext/intertext.py --infiles "sample_data/texts/*.txt" --metadata "sample_data/metadata.json"  --verbose --update_client
 
-
 # serve output
 python -m http.server 8000
 ```
