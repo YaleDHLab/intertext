@@ -158,8 +158,9 @@ def download_client(**kwargs):
     zip_location = os.path.join(client_location, 'client.zip')
     # download the zip archive
     with open(zip_location, 'wb') as out:
-      url = f'https://lab-apps.s3-us-west-2.amazonaws.com/intertext-builds/intertext-client-{kwargs["client"]}.zip'
+      url = f'https://duhaime.s3.amazonaws.com/yale-dh-lab/intertext/client.zip'
       out.write(requests.get(url).content)
+
     # extract the zip archive
     with zipfile.ZipFile(zip_location, 'r') as z:
       z.extractall(client_location)
