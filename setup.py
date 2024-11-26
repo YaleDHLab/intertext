@@ -22,7 +22,7 @@ setup(
     'networkx>=2.4',
     'nltk==3.4.5',
     'numpy==1.20.1',
-    'requests==2.24.0',
+    'requests==2.31.0',
     'unidecode==1.2.0',
     'vectorizedMinHash>=0.0.2'
   ],
